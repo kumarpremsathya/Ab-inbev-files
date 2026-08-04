@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Threading & Batching – Learning Reference</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6fb; color: #222; line-height: 1.7; }
+
+    header {
+      background: linear-gradient(135deg, #0078d4, #005a9e);
+      color: white;
+      padding: 36px 48px;
+    }
+    header h1 { font-size: 2rem; font-weight: 700; }
+    header p  { font-size: 1rem; opacity: 0.85; margin-top: 6px; }
+
+    .container { max-width: 980px; margin: 0 auto; padding: 36px 24px; }
+
+    h2 {
+      font-size: 1.4rem;
+      color: #005a9e;
+      border-left: 5px solid #0078d4;
+      padding-left: 14px;
+      margin: 40px 0 16px;
+    }
+    h3 { font-size: 1.1rem; color: #333; margin: 24px 0 10px; }
+
+    p { margin-bottom: 12px; }
+
+    pre {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      border-radius: 8px;
+      padding: 20px 24px;
+      overflow-x: auto;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      margin: 12px 0 20px;
+    }
+
+    code {
+      background: #e8eef6;
+      color: #005a9e;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-family: Consolas, monospace;
+      font-size: 0.9em;
+    }
+
+    pre code { background: none; color: inherit; padding: 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 24px;
+      font-size: 0.92rem;
+    }
+    th {
+      background: #0078d4;
+      color: white;
+      padding: 10px 14px;
+      text-align: left;
+    }
+    td { padding: 9px 14px; border-bottom: 1px solid #dde3ed; }
+    tr:nth-child(even) td { background: #f0f5fb; }
+
+    .callout {
+      background: #e6f2ff;
+      border-left: 5px solid #0078d4;
+      padding: 14px 18px;
+      border-radius: 4px;
+      margin: 16px 0;
+      font-size: 0.95rem;
+    }
+    .callout.green  { background: #edfbea; border-color: #1a7f37; }
+    .callout.orange { background: #fff8ec; border-color: #e8810a; }
+
+    .log {
+      background: #0c0c0c;
+      color: #b5cea8;
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-family: Consolas, monospace;
+      font-size: 0.82rem;
+      line-height: 1.7;
+      overflow-x: auto;
+      margin: 12px 0 20px;
+    }
+    .log .done  { color: #4ec9b0; font-weight: bold; }
+    .log .info  { color: #9cdcfe; }
+    .log .total { color: #dcdcaa; font-weight: bold; }
+
+    footer {
+      text-align: center;
+      padding: 28px;
+      font-size: 0.82rem;
+      color: #888;
+      border-top: 1px solid #dde3ed;
+      margin-top: 48px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #0078d4;
+      color: white;
+      border-radius: 12px;
+      padding: 2px 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Threading &amp; Batching – Learning Reference</h1>
+  <p>Based on abi_multicloudsync / AzPolicyStates real script – Session 2026-07-21</p>
+</header>
+
+<div class="container">
+
+  <!-- ─────────────────────────────────────────── -->
+  <h2>1. What This Document Covers</h2>
+  <p>This document captures everything explained in the learning session on <strong>21-Jul-2026</strong> about:</p>
+  <ul style="margin-left:20px; margin-bottom:12px;">
+    <li>How <code>yield</code> / <code>chunk()</code> splits data into batches</li>
+    <li>How <code>ThreadPoolExecutor</code> runs batches in parallel</li>
+    <li>How <code>as_completed()</code> collects results as each finishes</li>
+    <li>How <code>skip_token</code> pagination works (real Azure Resource Graph)</li>
+    <li>How the production <code>policy_states.py</code> log output maps to the code</li>
+    <li>Actual record counts extracted from Azure (240 subscriptions, 8 batches)</li>
+  </ul>
+
+  <!-- ─────────────────────────────────────────── -->
+  <h2>2. The Simple Demo Script (test.py)</h2>
+  <p>This script was written to teach the concepts without Azure dependencies.</p>
+
+<pre><code>from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+import random
+
+BATCH_SIZE = 5
+MAX_WORKERS = 3
+
+def chunk(items, batch_size):
+    for i in range(0, len(items), batch_size):
+        yield items[i:i + batch_size]
+
+def query_batch(batch, batch_number, total_batches):
+    print(f"Batch {batch_number}/{total_batches} START: {batch}")
+    all_records = []
+    total_pages = random.randint(3, 7)
+
+    for page in range(1, total_pages + 1):
+        time.sleep(1)
+        fake_records = [
+            f"sub-{sub}-record-page-{page}"
+            for sub in batch
+        ]
+        all_records.extend(fake_records)
+        print(
+            f"Batch {batch_number}/{total_batches} "
+            f"page {page}/{total_pages}, records so far: {len(all_records)}"
+        )
+
+    print(f"Batch {batch_number}/{total_batches} DONE: {len(all_records)} records")
+    return all_records
+
+def main():
+    subscriptions = list(range(1, 21))
+    print(f"Total subscriptions: {len(subscriptions)}")
+
+    batches = list(chunk(subscriptions, BATCH_SIZE))
+    total_batches = len(batches)
+    print(f"Created {total_batches} batches:")
+    print(batches)
+
+    all_results = []
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {}
+        for index, batch in enumerate(batches):
+            batch_number = index + 1
+            future = executor.submit(query_batch, batch, batch_number, total_batches)
+            futures[future] = batch_number
+
+        for future in as_completed(futures):
+            batch_number = futures[future]
+            batch_result = future.result()
+            all_results.extend(batch_result)
+            print(f"Collected Batch {batch_number}. Total: {len(all_results)}")
+
+    print("ALL DONE")
+    print(f"Final record count: {len(all_results)}")
+
+if __name__ == "__main__":
+    main()</code></pre>
+
+  <!-- ─────────────────────────────────────────── -->
+  <h2>3. Step-by-Step Flow Explanation</h2>
+
+  <h3>Step 1 – Create Fake Subscriptions</h3>
+  <pre><code>subscriptions = list(range(1, 21))
+# Result: [1, 2, 3, 4, 5, ..., 20]</code></pre>
+  <p>These fake numbers represent Azure subscription IDs. In the real script this is replaced by:</p>
+  <pre><code>subscriptions = self._get_subscriptions(azenvironment)
+# Returns: ['sub-id-1', 'sub-id-2', ..., 'sub-id-240']</code></pre>
+
+  <h3>Step 2 – Split into Batches using chunk() / yield</h3>
+  <pre><code>batches = list(chunk(subscriptions, BATCH_SIZE))
+# BATCH_SIZE = 5
+# Result:
+# [[1,2,3,4,5], [6,7,8,9,10], [11,12,13,14,15], [16,17,18,19,20]]</code></pre>
+
+  <div class="callout">
+    <strong>What is yield?</strong><br/>
+    <code>yield</code> returns one value at a time and remembers where it stopped.<br/>
+    Unlike <code>return</code> which exits the function, <code>yield</code> pauses and resumes.
+  </div>
+
+  <p>How the slicing works internally:</p>
+  <pre><code>range(0, 20, 5)   →   0, 5, 10, 15
+
+items[0:5]   →  [1, 2, 3, 4, 5]
+items[5:10]  →  [6, 7, 8, 9, 10]
+items[10:15] →  [11, 12, 13, 14, 15]
+items[15:20] →  [16, 17, 18, 19, 20]</code></pre>
+
+  <p>In the real script:</p>
+  <pre><code>BATCH_SIZE = 30
+240 subscriptions / 30 = 8 batches</code></pre>
+
+  <h3>Step 3 – Create Thread Pool</h3>
+  <pre><code>with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:</code></pre>
+
+  <table>
+    <tr><th>Script</th><th>MAX_WORKERS</th><th>Batches</th><th>What happens</th></tr>
+    <tr><td>test.py</td><td>3</td><td>4</td><td>3 run first, 4th waits for a slot</td></tr>
+    <tr><td>policy_states.py</td><td>8</td><td>8</td><td>All 8 run at the same time</td></tr>
+  </table>
+
+  <h3>Step 4 – Submit Each Batch to a Thread</h3>
+  <pre><code>future = executor.submit(
+    query_batch,
+    batch,
+    batch_number,
+    total_batches
+)
+futures[future] = batch_number</code></pre>
+
+  <div class="callout orange">
+    <strong>What is a future?</strong><br/>
+    A <code>future</code> is like a receipt / token for work running in another thread.<br/>
+    The main thread does not wait – it keeps submitting more batches.<br/>
+    When a batch finishes, the future is "resolved" and the result can be collected.
+  </div>
+
+  <h3>Step 5 – What Happens Inside query_batch()</h3>
+  <pre><code>total_pages = random.randint(3, 7)   # simulates Azure pagination
+
+for page in range(1, total_pages + 1):
+    time.sleep(1)                        # simulates Azure API call
+
+    fake_records = [
+        f"sub-{sub}-record-page-{page}"
+        for sub in batch
+    ]
+    all_records.extend(fake_records)</code></pre>
+
+  <p>If batch is <code>[1, 2, 3, 4, 5]</code> and page is <code>1</code>, fake records become:</p>
+  <pre><code>["sub-1-record-page-1", "sub-2-record-page-1", "sub-3-record-page-1",
+ "sub-4-record-page-1", "sub-5-record-page-1"]</code></pre>
+
+  <p>After each page, count grows:</p>
+  <pre><code>Page 1: 5 records
+Page 2: 10 records
+Page 3: 15 records</code></pre>
+
+  <h3>Step 6 – Real Azure Pagination vs Fake Pagination</h3>
+  <table>
+    <tr><th>test.py (fake)</th><th>policy_states.py (real Azure)</th></tr>
+    <tr><td><code>total_pages = random.randint(3, 7)</code></td><td>Azure sends <code>skip_token</code> if more records exist</td></tr>
+    <tr><td><code>for page in range(1, total_pages + 1):</code></td><td><code>while True: ... if not skip_token: break</code></td></tr>
+    <tr><td><code>time.sleep(1)</code></td><td>Real HTTP call to Azure Resource Graph</td></tr>
+    <tr><td>Returns 5 fake strings per page</td><td>Returns up to 1000 real policy state records per page</td></tr>
+  </table>
+
+  <p>Real pagination code in policy_states.py:</p>
+  <pre><code>while True:
+    options = arg.models.QueryRequestOptions(
+        result_format="objectArray",
+        top=1000,
+        skip_token=skip_token
+    )
+    result = argClient.resources(query).as_dict()
+    all_data += result["data"]
+    skip_token = result.get("skip_token")
+    page += 1
+
+    if not skip_token:   # no more pages → stop
+        break</code></pre>
+
+  <h3>Step 7 – as_completed() collects whichever batch finishes first</h3>
+  <pre><code>for future in as_completed(futures):
+    batch_number = futures[future]
+    batch_result = future.result()
+    all_results.extend(batch_result)</code></pre>
+
+  <div class="callout green">
+    <strong>Important:</strong> <code>as_completed()</code> does NOT give results in order (1,2,3,4...).<br/>
+    It gives you whichever batch finishes first.<br/>
+    A batch with fewer records finishes faster → collected first.<br/>
+    That is why in the real log you saw <strong>Batch 8</strong> finish first (only 36,195 records / 37 pages).
+  </div>
+
+  <!-- ─────────────────────────────────────────── -->
+  <h2>4. Mapping: test.py vs policy_states.py</h2>
+  <table>
+    <tr><th>test.py</th><th>policy_states.py</th></tr>
+    <tr><td><code>subscriptions = list(range(1, 21))</code></td><td>Real 240 Azure enabled subscriptions</td></tr>
+    <tr><td><code>BATCH_SIZE = 5</code></td><td><code>BATCH_SIZE = 30</code></td></tr>
+    <tr><td><code>MAX_WORKERS = 3</code></td><td><code>MAX_WORKERS = 8</code></td></tr>
+    <tr><td><code>chunk()</code></td><td><code>_chunk()</code></td></tr>
+    <tr><td><code>query_batch()</code></td><td><code>_query_batch()</code></td></tr>
+    <tr><td>Random pages (3–7)</td><td>Real pages via <code>skip_token</code></td></tr>
+    <tr><td><code>time.sleep(1)</code></td><td>Real Azure Resource Graph HTTP call</td></tr>
+    <tr><td><code>all_results</code></td><td>All policy state records (JSON)</td></tr>
+    <tr><td>Final print</td><td>DB insert into <code>tblAzPolicyStates</code></td></tr>
+  </table>
+
+  <!-- ─────────────────────────────────────────── -->
+  <h2>5. Real Production Run – Log Analysis</h2>
+  <p>Command run:</p>
+  <pre><code>python -m AzPolicyStates.policy_states</code></pre>
+
+  <p>Configuration used:</p>
+  <pre><code>BATCH_SIZE  = 30    # 30 subscriptions per batch
+MAX_WORKERS = 8     # 8 parallel threads
+MAX_SUBS    = None  # All 240 subscriptions
+Total batches = 240 / 30 = 8</code></pre>
+
+  <h3>All 8 Batches Started Together at 11:21:27</h3>
+  <div class="log">
+    <span class="info">2026-07-21 11:21:27 [INFO] [AzurePublicCloud] Found 240 enabled subscriptions</span><br/>
+    <span class="info">2026-07-21 11:21:27 [INFO] [AzurePublicCloud] 8 batches × 30 subs | 8 parallel workers</span><br/>
+    2026-07-21 11:21:27 [INFO] Batch 1/8 START — 30 subs<br/>
+    2026-07-21 11:21:27 [INFO] Batch 2/8 START — 30 subs<br/>
+    2026-07-21 11:21:27 [INFO] Batch 3/8 START — 30 subs<br/>
+    2026-07-21 11:21:27 [INFO] Batch 4/8 START — 30 subs<br/>
+    2026-07-21 11:21:27 [INFO] Batch 5/8 START — 30 subs<br/>
+    2026-07-21 11:21:27 [INFO] Batch 6/8 START — 30 subs<br/>
+    2026-07-21 11:21:27 [INFO] Batch 7/8 START — 30 subs<br/>
+    2026-07-21 11:21:27 [INFO] Batch 8/8 START — 30 subs
+  </div>
+
+  <h3>Batch Completion Order (not in sequence – whichever finishes first)</h3>
+  <table>
+    <tr><th>Completion Order</th><th>Batch</th><th>Records</th><th>Pages</th><th>Time</th><th>Cumulative Total</th></tr>
+    <tr><td>1st</td><td>Batch 8/8</td><td>36,195</td><td>37</td><td>105.5s</td><td>36,195</td></tr>
+    <tr><td>2nd</td><td>Batch 2/8</td><td>52,353</td><td>53</td><td>143.5s</td><td>88,548</td></tr>
+    <tr><td>3rd</td><td>Batch 1/8</td><td>69,739</td><td>70</td><td>190.4s</td><td>158,287</td></tr>
+    <tr><td>4th</td><td>Batch 5/8</td><td>111,283</td><td>112</td><td>315.6s</td><td>269,570</td></tr>
+    <tr><td>5th</td><td>Batch 3/8</td><td>143,596</td><td>144</td><td>440.3s</td><td>413,166</td></tr>
+    <tr><td>6th</td><td>Batch 4/8</td><td>252,832</td><td>253</td><td>829.5s</td><td>665,998</td></tr>
+    <tr><td>7th</td><td>Batch 7/8</td><td>429,826</td><td>430</td><td>1896.8s</td><td>1,095,824</td></tr>
+    <tr><td>8th (last)</td><td>Batch 6/8</td><td>~360,000+</td><td>360+</td><td>still running</td><td>~1.45 million</td></tr>
+  </table>
+
+  <div class="callout green">
+    <strong>Why did Batch 8 finish first?</strong><br/>
+    Each batch covers 30 different subscriptions. Some subscriptions have fewer policy states than others.
+    Batch 8's 30 subscriptions only had <strong>36,195</strong> records across 37 pages.
+    Batch 7's 30 subscriptions had <strong>429,826</strong> records across 430 pages — much more work.
+  </div>
+
+  <h3>Key Log Lines Explained</h3>
+  <div class="log">
+    <span class="done">2026-07-21 11:28:47 [INFO] Batch 3/8 DONE — 143,596 records in 144 pages | 440.3s</span><br/>
+    <span class="total">2026-07-21 11:28:47 [INFO] Batches done: 5/8 | Total records: 413,166 | Elapsed: 7.3 min | Rate: 56,299 rec/min | ETA: 4.4 min</span>
+  </div>
+
+  <table>
+    <tr><th>Log field</th><th>Meaning</th></tr>
+    <tr><td><code>Batch 3/8 DONE</code></td><td>Batch 3 finished (even though it's the 5th to complete)</td></tr>
+    <tr><td><code>143,596 records</code></td><td>Records from this batch alone</td></tr>
+    <tr><td><code>144 pages</code></td><td>Number of Resource Graph API calls for this batch</td></tr>
+    <tr><td><code>440.3s</code></td><td>Time taken by this batch thread</td></tr>
+    <tr><td><code>Total records: 413,166</code></td><td>Sum of all completed batches so far</td></tr>
+    <tr><td><code>Elapsed: 7.3 min</code></td><td>Overall clock time since script started</td></tr>
+    <tr><td><code>Rate: 56,299 rec/min</code></td><td>Total records / elapsed minutes</td></tr>
+    <tr><td><code>ETA: 4.4 min</code></td><td>Estimated time for remaining batches</td></tr>
+  </table>
+
+  <!-- ─────────────────────────────────────────── -->
+  <h2>6. Final Record Counts – Production Run</h2>
+  <table>
+    <tr><th>Environment</th><th>Subscriptions</th><th>Batches</th><th>Final Records</th><th>Total Time</th></tr>
+    <tr><td>AzurePublicCloud</td><td>240</td><td>8</td><td>~1.45–1.5 million</td><td>~35–40 min</td></tr>
+    <tr><td>AzureChinaCloud</td><td>—</td><td>—</td><td>commented out</td><td>—</td></tr>
+  </table>
+
+  <div class="callout orange">
+    <strong>Note on 30 lakhs (3 million):</strong><br/>
+    The earlier expectation of 30 lakh records assumed both AzurePublicCloud + AzureChinaCloud combined.
+    AzurePublicCloud alone yields ~1.1–1.5 million (~11–15 lakhs).
+    AzureChinaCloud is currently commented out in <code>get_policy_states()</code>.
+  </div>
+
+  <!-- ─────────────────────────────────────────── -->
+  <h2>7. Key Concepts Summary</h2>
+  <table>
+    <tr><th>Concept</th><th>What it does</th><th>Where in code</th></tr>
+    <tr><td><code>yield</code></td><td>Returns one batch at a time, remembers position</td><td><code>chunk()</code> / <code>_chunk()</code></td></tr>
+    <tr><td><code>ThreadPoolExecutor</code></td><td>Creates a pool of worker threads</td><td><code>policy_states_api()</code></td></tr>
+    <tr><td><code>executor.submit()</code></td><td>Sends a function to run in a background thread</td><td>Inside executor block</td></tr>
+    <tr><td><code>future</code></td><td>A receipt/token for background work</td><td><code>futures</code> dict</td></tr>
+    <tr><td><code>as_completed()</code></td><td>Yields futures as they finish (not in order)</td><td>Collection loop</td></tr>
+    <tr><td><code>skip_token</code></td><td>Azure's way of saying "more pages exist"</td><td><code>_query_batch()</code></td></tr>
+    <tr><td><code>top=1000</code></td><td>Max records per single API call (page)</td><td><code>QueryRequestOptions</code></td></tr>
+    <tr><td><code>all_results.extend()</code></td><td>Merges batch result into the combined list</td><td>Collection loop</td></tr>
+  </table>
+
+  <!-- ─────────────────────────────────────────── -->
+  <h2>8. Without Threading vs With Threading</h2>
+  <table>
+    <tr><th></th><th>Old approach (sequential)</th><th>New approach (parallel)</th></tr>
+    <tr><td>How it works</td><td>Query sub 1, then sub 2, then sub 3...</td><td>Query 30 subs × 8 workers at once</td></tr>
+    <tr><td>Time taken</td><td>~7 hours</td><td>~35–40 minutes</td></tr>
+    <tr><td>CPU usage</td><td>Low (waiting for API most of time)</td><td>Higher but still I/O bound</td></tr>
+    <tr><td>Risk of rate limit</td><td>Low</td><td>Higher – reduce MAX_WORKERS if 429 errors appear</td></tr>
+  </table>
+
+  <!-- ─────────────────────────────────────────── -->
+  <h2>9. How to Read the Terminal Log</h2>
+  <pre><code>Batch X/8 — page N, records so far: N,000 | Ns
+  │           │                     │         └── seconds elapsed for this batch
+  │           │                     └── records fetched by this batch so far
+  │           └── which Resource Graph page (each page = 1000 records)
+  └── which batch number out of 8
+
+Batch X/8 DONE — N records in N pages | Ns
+  → This batch's thread has finished completely
+
+Batches done: N/8 | Total records: N | Elapsed: N min | Rate: N rec/min | ETA: N min
+  → Summary after collecting one more batch in the main thread</code></pre>
+
+</div>
+
+<footer>
+  Generated from learning session – abi_multicloudsync project – 2026-07-21 &nbsp;|&nbsp; AzPolicyStates threading reference
+</footer>
+
+</body>
+</html>

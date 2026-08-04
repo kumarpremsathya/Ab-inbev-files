@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Azure Functions Host and CORS Guide</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 960px;
+      margin: 30px auto;
+      padding: 0 24px;
+      background: #f8fafc;
+      color: #1f2933;
+      line-height: 1.55;
+    }
+
+    h1 {
+      background: #0078d4;
+      color: white;
+      padding: 18px 22px;
+      border-radius: 6px;
+      margin-bottom: 22px;
+    }
+
+    h2 {
+      color: #005a9e;
+      border-bottom: 2px solid #0078d4;
+      padding-bottom: 6px;
+      margin-top: 34px;
+    }
+
+    h3 {
+      color: #334155;
+      margin-top: 22px;
+    }
+
+    .box {
+      background: white;
+      border: 1px solid #d9e2ec;
+      border-radius: 6px;
+      padding: 18px 22px;
+      margin-top: 16px;
+    }
+
+    .tip {
+      background: #e6f4ea;
+      border-left: 4px solid #107c10;
+      padding: 11px 16px;
+      border-radius: 4px;
+      margin-top: 12px;
+    }
+
+    .warn {
+      background: #fff4e0;
+      border-left: 4px solid #d83b01;
+      padding: 11px 16px;
+      border-radius: 4px;
+      margin-top: 12px;
+    }
+
+    pre {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 14px 16px;
+      border-radius: 5px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    code {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+
+    th {
+      background: #0078d4;
+      color: white;
+      padding: 10px;
+      text-align: left;
+    }
+
+    td {
+      border-bottom: 1px solid #d9e2ec;
+      padding: 10px;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) {
+      background: #eef6ff;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Azure Functions Host and CORS Guide</h1>
+<p>This document explains what the <code>Host</code> section means in <code>local.settings.json</code>, especially this local development setting:</p>
+
+<pre>{
+  "Host": {
+    "CORS": "*"
+  }
+}</pre>
+
+<h2>1. What Does Host Mean?</h2>
+<div class="box">
+  <p>In <code>local.settings.json</code>, <strong>Host</strong> means the <strong>Azure Functions host/runtime settings</strong>.</p>
+
+  <p>It does <strong>not</strong> mean:</p>
+  <ul>
+    <li>Your computer hostname</li>
+    <li>Your frontend host</li>
+    <li>Your backend Python function code directly</li>
+  </ul>
+
+  <p>It means the runtime process that starts when you run:</p>
+
+  <pre>func start</pre>
+
+  <div class="tip">Simple meaning: <strong>Host = the Azure Functions runtime around your code.</strong></div>
+</div>
+
+<h2>2. Two-Layer Mental Model</h2>
+<div class="box">
+  <p>An Azure Function app has two important layers:</p>
+
+  <pre>Browser / client
+   |
+   v
+Azure Functions Host
+   |
+   v
+Your Python function code</pre>
+
+  <p>The browser request reaches the <strong>Azure Functions Host</strong> first. Only after that does the host call your Python function method like <code>test_request_receiver()</code>.</p>
+</div>
+
+<h2>3. What The Functions Host Does</h2>
+<div class="box">
+  <p>The Functions host/runtime is responsible for:</p>
+
+  <ul>
+    <li>Opening <code>http://localhost:7071</code></li>
+    <li>Registering routes like <code>/api/test_request_receiver</code></li>
+    <li>Receiving HTTP requests before your Python code runs</li>
+    <li>Handling function keys and auth level</li>
+    <li>Handling CORS</li>
+    <li>Loading HTTP triggers, timer triggers, and Service Bus triggers</li>
+    <li>Deciding which function method to call</li>
+  </ul>
+
+  <div class="tip">So CORS is handled before your Python line <code>data = req.get_json()</code> runs.</div>
+</div>
+
+<h2>4. Why CORS Is Needed Here</h2>
+<div class="box">
+  <p>Your HTML test page runs from Live Server:</p>
+
+  <pre>http://127.0.0.1:5500</pre>
+
+  <p>Your Azure Function runs from the Functions host:</p>
+
+  <pre>http://localhost:7071</pre>
+
+  <p>Even though both are on your laptop, the browser sees them as <strong>different origins</strong>.</p>
+
+  <pre>127.0.0.1:5500  !=  localhost:7071</pre>
+
+  <p>The browser compares protocol, host, and port:</p>
+
+  <table>
+    <tr><th>Part</th><th>Frontend</th><th>Backend Function</th><th>Same?</th></tr>
+    <tr><td>Protocol</td><td>http</td><td>http</td><td>Yes</td></tr>
+    <tr><td>Host</td><td>127.0.0.1</td><td>localhost</td><td>No</td></tr>
+    <tr><td>Port</td><td>5500</td><td>7071</td><td>No</td></tr>
+  </table>
+
+  <div class="warn">Because host/port differ, the browser applies CORS rules.</div>
+</div>
+
+<h2>5. What Happens During CORS Preflight</h2>
+<div class="box">
+  <p>Before the real POST request, the browser sends an automatic OPTIONS request:</p>
+
+  <pre>OPTIONS /api/test_request_receiver
+Origin: http://127.0.0.1:5500
+Access-Control-Request-Method: POST
+Access-Control-Request-Headers: content-type</pre>
+
+  <p>This is called a <strong>CORS preflight</strong>.</p>
+
+  <p>The browser is asking the backend:</p>
+
+  <blockquote>Is <code>http://127.0.0.1:5500</code> allowed to send a POST request with JSON content to you?</blockquote>
+
+  <p>When you add this setting:</p>
+
+  <pre>"Host": {
+  "CORS": "*"
+}</pre>
+
+  <p>The Functions host can respond with CORS headers, similar to:</p>
+
+  <pre>Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET,POST,OPTIONS
+Access-Control-Allow-Headers: Content-Type</pre>
+
+  <p>Then the browser allows the real POST request.</p>
+</div>
+
+<h2>6. Why The Earlier Error Happened</h2>
+<div class="box">
+  <p>You saw an error like:</p>
+
+  <pre>ValueError: HTTP request does not contain valid JSON data</pre>
+
+  <p>That happened because the function received a request without JSON body, most likely the browser's OPTIONS preflight request.</p>
+
+  <p>Your function code was doing:</p>
+
+  <pre>data = req.get_json()</pre>
+
+  <p>But the OPTIONS request has no JSON body, so <code>req.get_json()</code> failed.</p>
+
+  <div class="tip">With Host CORS configured, the Functions host handles preflight before it reaches your Python function.</div>
+</div>
+
+<h2>7. Host vs Values</h2>
+<div class="box">
+  <p><code>Values</code> and <code>Host</code> are different sections.</p>
+
+  <table>
+    <tr><th>Section</th><th>Purpose</th><th>Who Uses It?</th></tr>
+    <tr><td><code>Values</code></td><td>Environment variables for your application code</td><td>Your Python code</td></tr>
+    <tr><td><code>Host</code></td><td>Settings for the Azure Functions runtime</td><td>Azure Functions host</td></tr>
+  </table>
+
+  <h3>Values Example</h3>
+  <pre>"Values": {
+  "Environment": "Local",
+  "DATABASE": "config-mgmt-dev"
+}</pre>
+
+  <p>Your Python code can read these:</p>
+
+  <pre>os.environ.get("Environment")</pre>
+
+  <h3>Host Example</h3>
+  <pre>"Host": {
+  "CORS": "*"
+}</pre>
+
+  <p>This is read by the Functions runtime, not normally by your Python code.</p>
+
+  <div class="tip">Memory shortcut: <strong>Values = settings for your code. Host = settings for the runtime around your code.</strong></div>
+</div>
+
+<h2>8. What CORS "*" Means</h2>
+<div class="box">
+  <p>The value <code>"*"</code> means:</p>
+
+  <blockquote>Allow browser requests from any origin.</blockquote>
+
+  <p>For local testing, this is usually fine:</p>
+
+  <pre>"Host": {
+  "CORS": "*"
+}</pre>
+
+  <p>For production, avoid <code>"*"</code>. Use the actual frontend URL instead, for example:</p>
+
+  <pre>"Host": {
+  "CORS": "https://your-frontend-domain.com"
+}</pre>
+
+  <div class="warn">Production should restrict CORS to trusted frontend domains.</div>
+</div>
+
+<h2>9. Your Current Local Flow</h2>
+<div class="box">
+  <pre>test_policy_exemption.html
+  runs on Live Server
+  http://127.0.0.1:5500
+
+      |
+      | fetch("http://localhost:7071/api/test_request_receiver")
+      v
+
+Azure Functions Host
+  runs on
+  http://localhost:7071
+
+      |
+      | after CORS/auth/route handling
+      v
+
+function_app.py
+  test_request_receiver(req)
+
+      |
+      | req.get_json()
+      v
+
+payload becomes Python dict</pre>
+</div>
+
+<h2>10. Final Summary</h2>
+<div class="box">
+  <table>
+    <tr><th>Question</th><th>Answer</th></tr>
+    <tr><td>What is <code>Host</code>?</td><td>Azure Functions runtime settings</td></tr>
+    <tr><td>Is it my computer hostname?</td><td>No</td></tr>
+    <tr><td>Is it my Python function?</td><td>No, it is the runtime that calls your function</td></tr>
+    <tr><td>Why add CORS here?</td><td>Because browser CORS is handled before Python code runs</td></tr>
+    <tr><td>Why does browser need CORS?</td><td>Frontend runs on port 5500, backend runs on port 7071</td></tr>
+    <tr><td>Is <code>"*"</code> okay?</td><td>Fine for local testing, not ideal for production</td></tr>
+  </table>
+</div>
+
+<p style="color:#667085; font-size:12px; margin-top:32px;">Generated: 2026-07-31 | ABI Cloud Management local development reference</p>
+
+</body>
+</html>

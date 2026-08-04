@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AzSQLServers - Execution Flow Reference</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; background: #f4f6f9; color: #222; margin: 0; padding: 0; }
+    header { background: #0078d4; color: white; padding: 28px 40px; }
+    header h1 { margin: 0; font-size: 1.8rem; }
+    header p { margin: 6px 0 0; opacity: 0.85; font-size: 0.95rem; }
+    main { max-width: 960px; margin: 32px auto; padding: 0 24px 60px; }
+
+    h2 { color: #0078d4; border-bottom: 2px solid #0078d4; padding-bottom: 6px; margin-top: 40px; }
+    h3 { color: #005a9e; margin-top: 28px; }
+
+    .step { background: white; border-left: 5px solid #0078d4; border-radius: 6px; padding: 18px 22px; margin-bottom: 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .step .step-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #0078d4; margin-bottom: 4px; letter-spacing: 0.05em; }
+    .step h3 { margin: 0 0 10px; color: #003f6b; font-size: 1rem; }
+
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; line-height: 1.55; }
+    code { font-family: Consolas, monospace; }
+    .inline-code { background: #e8f0fe; color: #003f6b; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.88em; }
+
+    .arrow { text-align: center; font-size: 1.4rem; color: #0078d4; margin: 4px 0; }
+
+    .diagram { background: #1e1e1e; color: #9cdcfe; padding: 20px; border-radius: 8px; font-family: Consolas, monospace; font-size: 0.82rem; line-height: 1.7; overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-top: 12px; }
+    th { background: #0078d4; color: white; padding: 12px 16px; text-align: left; font-size: 0.88rem; }
+    td { padding: 11px 16px; border-bottom: 1px solid #e8edf2; font-size: 0.88rem; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f0f6ff; }
+    td:first-child { font-family: Consolas, monospace; color: #003f6b; white-space: nowrap; }
+
+    .tag { display: inline-block; background: #e8f0fe; color: #0078d4; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; margin-right: 6px; }
+    .note { background: #fff8e1; border-left: 4px solid #f9a825; padding: 12px 16px; border-radius: 4px; font-size: 0.88rem; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>AzSQLServers — Execution Flow Reference</h1>
+  <p>Azure Functions · Python · Azure Resource Graph · Key Vault · Beginner Guide</p>
+</header>
+
+<main>
+
+  <!-- OVERVIEW -->
+  <h2>Overview</h2>
+  <p>
+    Azure Functions timer triggers <span class="inline-code">AzSQLServers</span> daily at <strong>6:00 AM</strong>.<br/>
+    It extracts SQL Server and Database metadata from both <strong>AzurePublicCloud</strong> and <strong>AzureChinaCloud</strong>
+    using Azure Resource Graph, then saves results to an Excel file (<span class="inline-code">sql_servers_output.xlsx</span>).
+  </p>
+
+  <!-- STEPS -->
+  <h2>Step-by-Step Flow</h2>
+
+  <div class="step">
+    <div class="step-label">Step 1</div>
+    <h3>Timer Trigger — <code>function_app.py</code></h3>
+    <p>Azure Functions fires the timer on schedule. It calls <span class="inline-code">get_sql_servers()</span>.</p>
+    <pre><code>schedule: "0 0 6 * * *"   ← every day at 6:00 AM
+
+def AzSQLServers(myTimer):
+    AzSQLServersXtractor().get_sql_servers()</code></pre>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="step-label">Step 2</div>
+    <h3>get_sql_servers() — <code>AzSQLServers/sql_servers.py</code></h3>
+    <p>Calls 4 API methods — 2 resource types × 2 clouds. Combines all results and writes to Excel.</p>
+    <pre><code>servers   = sql_servers_api("AzurePublicCloud")
+          + sql_servers_api("AzureChinaCloud")
+
+databases = sql_databases_api("AzurePublicCloud")
+          + sql_databases_api("AzureChinaCloud")
+
+→ writes to sql_servers_output.xlsx</code></pre>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="step-label">Step 3</div>
+    <h3>sql_servers_api(azenvironment) — needs an authenticated client</h3>
+    <p>Requests an Azure Resource Graph client from shared code.</p>
+    <pre><code>argClient = ResourceGraph().get_resorce_graph("AzurePublicCloud")
+# → jumps to shared_code/resourcegraph_client.py</code></pre>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="step-label">Step 4</div>
+    <h3>get_resorce_graph() — <code>shared_code/resourcegraph_client.py</code></h3>
+    <p>Picks the Key Vault secret name based on the cloud environment, then fetches SPN credentials.</p>
+    <pre><code>if azenvironment == "AzurePublicCloud":
+    spn_secret_name = "az-public-spn-reader"
+elif azenvironment == "AzureChinaCloud":
+    spn_secret_name = "az-china-spn-reader"
+
+spn_token = SpnToken().get_spn_token(spn_secret_name)
+# → jumps to shared_code/spn_token.py</code></pre>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="step-label">Step 5</div>
+    <h3>get_spn_token(secret_name) — <code>shared_code/spn_token.py</code></h3>
+    <p>Fetches the secret from Key Vault and converts the raw JSON string into a Python dict.</p>
+    <pre><code>secrets_obj = AkvSecrets(os.environ["KEYVAULT_URI"], "az-public-spn-reader")
+spn_token   = secrets_obj.get_tokens()       # returns SecretBundle object
+spn_token   = json.loads(spn_token.value)    # JSON string → Python dict
+return spn_token
+# → jumps to shared_code/akv_secrets.py for get_tokens()</code></pre>
+    <div class="note">
+      <strong>KEYVAULT_URI</strong> comes from <span class="inline-code">local.settings.json</span>:
+      <span class="inline-code">https://puppetapi-secrets.vault.azure.net/</span>
+    </div>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="step-label">Step 6</div>
+    <h3>get_tokens() — <code>shared_code/akv_secrets.py</code></h3>
+    <p>Authenticates to Azure Key Vault using <span class="inline-code">DefaultAzureCredential</span> and retrieves the secret.</p>
+    <pre><code>credential = DefaultAzureCredential()
+# Reads AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID
+# from local.settings.json automatically
+
+client = SecretClient(vault_url=self.uri, credential=credential)
+retrieved_secret = client.get_secret("az-public-spn-reader")
+return retrieved_secret   # SecretBundle object</code></pre>
+    <div class="note">
+      Key Vault stores the secret as a raw JSON <strong>string</strong>:<br/>
+      <span class="inline-code">{"client_id": "abc123", "secret": "xyz789", "tenant": "tenant-id"}</span><br/>
+      <strong>Key Vault always returns a string.</strong> It is <span class="inline-code">json.loads()</span> in Step 5 that converts it to a dict.
+    </div>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="step-label">Step 7</div>
+    <h3>Back in get_resorce_graph() — builds authenticated client</h3>
+    <p>Uses the dict from Step 5 to build Azure credentials and return a ready-to-use Resource Graph client.</p>
+    <pre><code>credentials = ClientSecretCredential(
+    client_id     = spn_token["client_id"],
+    client_secret = spn_token["secret"],
+    tenant_id     = spn_token["tenant"]
+)
+res_graph_client = ResourceGraphClient(credentials)
+return res_graph_client   # ← authenticated, ready to query Azure</code></pre>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="step-label">Step 8</div>
+    <h3>Back in sql_servers_api() — queries Azure Resource Graph</h3>
+    <p>Sends a KQL query to Azure. Handles pagination — fetches all pages if results exceed 1000.</p>
+    <pre><code>result   = argClient.resources(argQuery)   # first page (up to 1000)
+all_data = result.get("data", [])
+
+while result.get("skip_token"):            # more pages exist?
+    result    = argClient.resources(next_page_query)
+    all_data += result.get("data", [])
+
+return all_data   # complete list of SQL server records</code></pre>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="step-label">Step 9</div>
+    <h3>Back in get_sql_servers() — saves output to Excel</h3>
+    <pre><code>pd.DataFrame(servers).to_excel(writer,   sheet_name="SQLServers")
+pd.DataFrame(databases).to_excel(writer, sheet_name="SQLDatabases")
+# → sql_servers_output.xlsx</code></pre>
+  </div>
+
+  <!-- DIAGRAM -->
+  <h2>Full Call Chain Diagram</h2>
+  <div class="diagram">
+Timer Trigger<br/>
+&nbsp;└── function_app.py → AzSQLServersXtractor().get_sql_servers()<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── sql_servers.py → sql_servers_api("AzurePublicCloud")<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── resourcegraph_client.py → get_resorce_graph()<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── spn_token.py → get_spn_token("az-public-spn-reader")<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── akv_secrets.py → get_tokens()<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── Azure Key Vault<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← SecretBundle (.value = raw JSON string)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← json.loads() → dict {client_id, secret, tenant}<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← ClientSecretCredential → ResourceGraphClient returned<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← argClient.resources(KQL query) → list of SQL server records<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── (same repeated for AzureChinaCloud, sql_databases_api ×2)<br/>
+&nbsp;└── all results merged → sql_servers_output.xlsx
+  </div>
+
+  <!-- KEY CONCEPTS -->
+  <h2>Key Concepts</h2>
+  <table>
+    <thead>
+      <tr><th>Concept</th><th>Explanation</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>DefaultAzureCredential</td>
+        <td>Reads <code>AZURE_CLIENT_ID</code>, <code>AZURE_CLIENT_SECRET</code>, <code>AZURE_TENANT_ID</code> from <code>local.settings.json</code> to authenticate to Key Vault. This is the root credential that unlocks everything.</td>
+      </tr>
+      <tr>
+        <td>Azure Key Vault</td>
+        <td>Stores SPN credentials as a JSON string — credentials are never hardcoded in the source code.</td>
+      </tr>
+      <tr>
+        <td>json.loads()</td>
+        <td>Converts the Key Vault string response into a Python dict so individual fields can be accessed by key.</td>
+      </tr>
+      <tr>
+        <td>ClientSecretCredential</td>
+        <td>Uses the SPN credentials fetched from Key Vault to authenticate to Azure Resource Graph.</td>
+      </tr>
+      <tr>
+        <td>Azure Resource Graph</td>
+        <td>A query service that searches Azure resources (SQL servers, databases, etc.) across all subscriptions at once using KQL (Kusto Query Language).</td>
+      </tr>
+      <tr>
+        <td>Pagination (skip_token)</td>
+        <td>Resource Graph returns a maximum of 1000 records per call. The while loop keeps fetching next pages until all records are retrieved.</td>
+      </tr>
+      <tr>
+        <td>local.settings.json</td>
+        <td>Local config file — equivalent of App Settings when deployed to Azure. Holds all environment variables used at runtime.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ENV VARS -->
+  <h2>Environment Variables (from local.settings.json)</h2>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>AZURE_TENANT_ID</td><td>Tenant ID — used by DefaultAzureCredential to authenticate to Key Vault</td></tr>
+      <tr><td>AZURE_CLIENT_ID</td><td>Client ID — used by DefaultAzureCredential to authenticate to Key Vault</td></tr>
+      <tr><td>AZURE_CLIENT_SECRET</td><td>Client Secret — used by DefaultAzureCredential to authenticate to Key Vault</td></tr>
+      <tr><td>KEYVAULT_URI</td><td>URL of the Azure Key Vault instance where SPN secrets are stored</td></tr>
+    </tbody>
+  </table>
+
+</main>
+</body>
+</html>

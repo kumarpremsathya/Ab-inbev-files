@@ -1,0 +1,101 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Git Stash - Scenario Based Guide</title>
+<style>
+body{font-family:Segoe UI,Arial;margin:40px;line-height:1.7;background:#fafafa;color:#222}
+h1{color:#0b5394}
+h2{background:#d9ead3;padding:8px}
+pre{background:#272822;color:#f8f8f2;padding:12px;border-radius:6px;overflow:auto}
+.box{background:#fff;border-left:5px solid #0b5394;padding:12px;margin:12px 0}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #aaa;padding:8px}
+th{background:#eee}
+</style>
+</head>
+<body>
+<h1>Git Stash - Scenario Based Learning Guide</h1>
+
+<div class="box">
+<b>Think of <code>git stash</code> as a temporary locker.</b><br>
+You save unfinished work into the locker, make your working folder clean, do another task, then bring your work back later.
+</div>
+
+<h2>Scenario 1 - Pull Latest Code</h2>
+<p><b>Situation:</b> You modified <code>function_app.py</code> but haven't committed it. Your teammate pushed new code.</p>
+<p><b>Problem:</b> <code>git pull</code> fails because of local changes.</p>
+<pre>git stash
+git pull --rebase
+git stash pop</pre>
+<p><b>Result:</b> Latest code is downloaded first, then your local work is restored.</p>
+
+<h2>Scenario 2 - Switch Branch Immediately</h2>
+<p><b>Situation:</b> You're working on <code>feature1</code>. Your manager asks you to fix a production bug.</p>
+<pre>git stash
+git checkout main
+# Fix bug
+git checkout feature1
+git stash pop</pre>
+<p><b>Result:</b> Your unfinished work waits safely while you fix the urgent issue.</p>
+
+<h2>Scenario 3 - Experimenting</h2>
+<p><b>Situation:</b> You changed many files to test an idea but aren't sure if you want to keep it.</p>
+<pre>git stash
+# Try something else
+git stash pop</pre>
+<p><b>Result:</b> No unnecessary commits for experimental code.</p>
+
+<h2>Scenario 4 - Before Rebase</h2>
+<p><b>Situation:</b> Git says:</p>
+<pre>error: cannot pull with rebase:
+You have unstaged changes.</pre>
+<p><b>Solution:</b></p>
+<pre>git stash
+git pull --rebase
+git stash pop</pre>
+
+<h2>Scenario 5 - Your Real Example</h2>
+<p><b>Your Goal:</b> Push only <code>PolicyExemption.py</code>.</p>
+<ol>
+<li>Created <code>PolicyExemption.py</code>.</li>
+<li>Committed only that file.</li>
+<li><code>git push</code> failed because remote branch had newer commits.</li>
+<li>Ran <code>git stash</code> to temporarily save other uncommitted files.</li>
+<li>Ran <code>git pull --rebase origin feature1</code>.</li>
+<li>Ran <code>git stash pop</code> to restore local work.</li>
+<li>Pushed successfully.</li>
+</ol>
+<div class="box">
+<b>Important:</b> Only <code>PolicyExemption.py</code> was pushed because it was the only file included in the commit. The stash restored other local files afterwards, and those remained local.
+</div>
+
+<h2>Commit vs Stash</h2>
+<table>
+<tr><th>Commit</th><th>Stash</th></tr>
+<tr><td>Permanent history</td><td>Temporary storage</td></tr>
+<tr><td>Can be pushed</td><td>Cannot be pushed</td></tr>
+<tr><td>Shared with team</td><td>Local to your computer</td></tr>
+<tr><td>Completed work</td><td>Unfinished work</td></tr>
+</table>
+
+<h2>Useful Commands</h2>
+<pre>
+git stash              # Save changes
+git stash list         # List all stashes
+git stash pop          # Restore and remove stash
+git stash apply        # Restore but keep stash
+git stash drop stash@{0}
+git stash clear
+</pre>
+
+<h2>When Should I Use git stash?</h2>
+<ul>
+<li>✔ Before pulling latest code.</li>
+<li>✔ Before switching branches.</li>
+<li>✔ Before rebasing.</li>
+<li>✔ When work is unfinished but you don't want to commit.</li>
+<li>❌ Don't use it as long-term storage.</li>
+</ul>
+</body></html>

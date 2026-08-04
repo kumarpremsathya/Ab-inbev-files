@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Azure Functions Python — Debug Setup Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2128;
+    --border: #30363d;
+    --accent: #00d4aa;
+    --accent2: #58a6ff;
+    --accent3: #f78166;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --code-bg: #0d1117;
+    --success: #3fb950;
+    --warn: #d29922;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    line-height: 1.6;
+    padding: 2rem 1rem;
+  }
+
+  .page {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  header {
+    border-left: 4px solid var(--accent);
+    padding-left: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  header .tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+  header h1 {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+  header h1 span { color: var(--accent2); }
+  header p {
+    margin-top: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+  }
+
+  /* Required Files Box */
+  .files-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.75rem;
+    margin: 1.2rem 0 2rem;
+  }
+  .file-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.55rem 0.85rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--accent2);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .file-chip::before { content: '📄'; font-size: 0.9rem; }
+
+  /* Steps */
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+  }
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #000;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .step-body { padding: 1rem 1.25rem; }
+  .step-body p {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+  }
+
+  /* Code blocks */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    margin: 0.6rem 0;
+  }
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--text);
+    line-height: 1.7;
+  }
+  .kw  { color: #ff7b72; }
+  .str { color: #a5d6ff; }
+  .key { color: #79c0ff; }
+  .val { color: #a8ff96; }
+  .cm  { color: var(--text-muted); font-style: italic; }
+  .cmd { color: var(--accent); }
+
+  /* Inline code */
+  p code, li code {
+    background: var(--surface2);
+    padding: 0.1em 0.4em;
+    border-radius: 3px;
+    font-size: 0.8rem;
+    color: var(--accent2);
+  }
+
+  /* Note / warn boxes */
+  .note {
+    display: flex;
+    gap: 0.7rem;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin: 0.6rem 0;
+    font-size: 0.85rem;
+  }
+  .note.info  { background: #1c2d3f; border-left: 3px solid var(--accent2); color: #a5d6ff; }
+  .note.warn  { background: #2d2010; border-left: 3px solid var(--warn);    color: #e3b341; }
+  .note.tip   { background: #122d1e; border-left: 3px solid var(--success); color: #7ee787; }
+  .note-icon  { font-size: 1rem; flex-shrink: 0; }
+
+  /* Errors section */
+  .errors-grid { display: grid; gap: 1rem; margin-top: 0.5rem; }
+  .error-card {
+    background: var(--code-bg);
+    border: 1px solid #3d1a1a;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .error-head {
+    background: #1e0e0e;
+    padding: 0.6rem 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.76rem;
+    color: var(--accent3);
+    font-weight: 600;
+  }
+  .error-body { padding: 0.75rem 1rem; font-size: 0.84rem; color: var(--text-muted); }
+  .error-body code { color: var(--accent); background: var(--surface2); padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.78rem; }
+
+  /* Summary checklist */
+  .checklist { list-style: none; margin-top: 0.75rem; }
+  .checklist li {
+    padding: 0.4rem 0;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li::before { content: '✓'; color: var(--success); font-weight: 700; flex-shrink: 0; }
+
+  /* Section label */
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+    margin-top: 2rem;
+  }
+
+  footer {
+    text-align: center;
+    padding: 2rem 0 1rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+    font-family: 'JetBrains Mono', monospace;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="tag">Setup Guide · Python · Azure Functions</div>
+    <h1>Debug Setup for<br><span>Azure Functions</span> in VS Code</h1>
+    <p>Follow this checklist every time you set up debugging in a new Python Azure Functions repo.</p>
+  </header>
+
+  <!-- Required Files -->
+  <div class="section-label">Required Files</div>
+  <div class="files-grid">
+    <div class="file-chip">.vscode/launch.json</div>
+    <div class="file-chip">.vscode/tasks.json</div>
+    <div class="file-chip">.vscode/settings.json</div>
+    <div class="file-chip">local.settings.json</div>
+    <div class="file-chip">requirements.txt</div>
+    <div class="file-chip">host.json</div>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">Install Requirements & debugpy</div>
+    </div>
+    <div class="step-body">
+      <p>In the repo root, create a virtual environment and install dependencies:</p>
+      <pre><code><span class="cmd">python -m venv .venv</span>
+<span class="cmd">.\.venv\Scripts\python.exe -m pip install -r requirements.txt</span>
+<span class="cmd">.\.venv\Scripts\python.exe -m pip install debugpy</span></code></pre>
+      <div class="note warn">
+        <span class="note-icon">⚠️</span>
+        If Azure Functions sometimes uses the global Python, also run:<br>
+        <code>py -m pip install debugpy</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">Install Azurite (Local Storage Emulator)</div>
+    </div>
+    <div class="step-body">
+      <p>Timer triggers require local storage emulation. Install globally:</p>
+      <pre><code><span class="cmd">npm install -g azurite</span></code></pre>
+      <div class="note info">
+        <span class="note-icon">ℹ️</span>
+        Required when <code>local.settings.json</code> contains <code>"AzureWebJobsStorage": "UseDevelopmentStorage=true"</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">.vscode/launch.json</div>
+    </div>
+    <div class="step-body">
+      <pre><code>{
+  <span class="key">"version"</span>: <span class="str">"0.2.0"</span>,
+  <span class="key">"configurations"</span>: [
+    {
+      <span class="key">"name"</span>: <span class="str">"Attach to Python Azure Functions"</span>,
+      <span class="key">"type"</span>: <span class="str">"debugpy"</span>,
+      <span class="key">"request"</span>: <span class="str">"attach"</span>,
+      <span class="key">"connect"</span>: {
+        <span class="key">"host"</span>: <span class="str">"127.0.0.1"</span>,
+        <span class="key">"port"</span>: <span class="val">9091</span>
+      },
+      <span class="key">"preLaunchTask"</span>: <span class="str">"func: host start"</span>,
+      <span class="key">"justMyCode"</span>: <span class="val">true</span>
+    }
+  ]
+}</code></pre>
+    </div>
+  </div>
+
+  <!-- Step 4 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div class="step-title">.vscode/tasks.json</div>
+    </div>
+    <div class="step-body">
+      <pre><code>{
+  <span class="key">"version"</span>: <span class="str">"2.0.0"</span>,
+  <span class="key">"tasks"</span>: [
+    {
+      <span class="key">"label"</span>: <span class="str">"azurite: start"</span>,
+      <span class="key">"type"</span>: <span class="str">"shell"</span>,
+      <span class="key">"command"</span>: <span class="str">"azurite.cmd"</span>,
+      <span class="key">"args"</span>: [<span class="str">"--location"</span>, <span class="str">"${workspaceFolder}"</span>],
+      <span class="key">"isBackground"</span>: <span class="val">true</span>,
+      <span class="key">"problemMatcher"</span>: {
+        <span class="key">"owner"</span>: <span class="str">"azurite"</span>,
+        <span class="key">"pattern"</span>: { <span class="key">"regexp"</span>: <span class="str">"."</span> },
+        <span class="key">"background"</span>: {
+          <span class="key">"activeOnStart"</span>: <span class="val">true</span>,
+          <span class="key">"beginsPattern"</span>: <span class="str">"Azurite"</span>,
+          <span class="key">"endsPattern"</span>: <span class="str">"successfully listening"</span>
+        }
+      }
+    },
+    {
+      <span class="key">"label"</span>: <span class="str">"func: host start"</span>,
+      <span class="key">"type"</span>: <span class="str">"shell"</span>,
+      <span class="key">"command"</span>: <span class="str">"func host start --verbose"</span>,
+      <span class="key">"isBackground"</span>: <span class="val">true</span>,
+      <span class="key">"dependsOn"</span>: <span class="str">"azurite: start"</span>,
+      <span class="key">"problemMatcher"</span>: <span class="str">"$func-python-watch"</span>,
+      <span class="key">"options"</span>: {
+        <span class="key">"env"</span>: {
+          <span class="key">"languageWorkers__python__defaultExecutablePath"</span>:
+            <span class="str">"${workspaceFolder}\\.venv\\Scripts\\python.exe"</span>,
+          <span class="key">"languageWorkers__python__arguments"</span>:
+            <span class="str">"-m debugpy --listen 127.0.0.1:9091"</span>
+        }
+      }
+    }
+  ]
+}</code></pre>
+    </div>
+  </div>
+
+  <!-- Step 5 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">5</div>
+      <div class="step-title">.vscode/settings.json</div>
+    </div>
+    <div class="step-body">
+      <pre><code>{
+  <span class="key">"azureFunctions.projectLanguage"</span>: <span class="str">"Python"</span>,
+  <span class="key">"azureFunctions.projectRuntime"</span>: <span class="str">"~4"</span>,
+  <span class="key">"azureFunctions.deploySubpath"</span>: <span class="str">"."</span>,
+  <span class="key">"python.defaultInterpreterPath"</span>: <span class="str">".venv\\Scripts\\python.exe"</span>
+}</code></pre>
+    </div>
+  </div>
+
+  <!-- Step 6 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">6</div>
+      <div class="step-title">local.settings.json — Minimum Required Values</div>
+    </div>
+    <div class="step-body">
+      <pre><code>{
+  <span class="key">"IsEncrypted"</span>: <span class="val">false</span>,
+  <span class="key">"Values"</span>: {
+    <span class="key">"FUNCTIONS_WORKER_RUNTIME"</span>: <span class="str">"python"</span>,
+    <span class="key">"AzureWebJobsStorage"</span>: <span class="str">"UseDevelopmentStorage=true"</span>,
+    <span class="key">"languageWorkers__python__defaultExecutablePath"</span>:
+      <span class="str">"C:\\FULL\\PATH\\TO\\REPO\\.venv\\Scripts\\python.exe"</span>,
+    <span class="key">"languageWorkers__python__arguments"</span>:
+      <span class="str">"-m debugpy --listen 127.0.0.1:9091"</span>
+  }
+}</code></pre>
+      <div class="note warn">
+        <span class="note-icon">⚠️</span>
+        Disabled flags must be set to <code>"false"</code>. Example:<br>
+        <code>"AzureWebJobs.&lt;function_name&gt;.Disabled": "false"</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 7 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">7</div>
+      <div class="step-title">Timer Trigger — Easy Debug Setup</div>
+    </div>
+    <div class="step-body">
+      <p>Temporarily use a short schedule so breakpoints hit within 10 seconds:</p>
+      <pre><code><span class="cm"># Hits every 10 seconds — good for debugging</span>
+@app.timer_trigger(
+    schedule=<span class="str">"*/10 * * * * *"</span>,
+    arg_name=<span class="str">"myTimer"</span>,
+    run_on_startup=<span class="val">False</span>
+)</code></pre>
+      <div class="note warn">
+        <span class="note-icon">⚠️</span>
+        Avoid <code>run_on_startup=True</code> while debugging — it can fire before the debugger attaches.
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 8 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">8</div>
+      <div class="step-title">Run Debug in VS Code</div>
+    </div>
+    <div class="step-body">
+      <div class="note tip">
+        <span class="note-icon">✅</span>
+        Use: <strong>Run and Debug → Attach to Python Azure Functions → F5</strong>
+      </div>
+      <div class="note warn">
+        <span class="note-icon">🚫</span>
+        Do NOT use: <strong>Python Debugger: Current File</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- Common Errors -->
+  <div class="section-label">Common Errors &amp; Fixes</div>
+  <div class="errors-grid">
+    <div class="error-card">
+      <div class="error-head">No module named azure.servicebus</div>
+      <div class="error-body">Run: <code>.\.venv\Scripts\python.exe -m pip install -r requirements.txt</code></div>
+    </div>
+    <div class="error-card">
+      <div class="error-head">py exited with code 1</div>
+      <div class="error-body">
+        Run both:<br>
+        <code>.\.venv\Scripts\python.exe -m pip install debugpy</code><br><br>
+        <code>py -m pip install debugpy</code>
+      </div>
+    </div>
+    <div class="error-card">
+      <div class="error-head">ECONNREFUSED 127.0.0.1:9091</div>
+      <div class="error-body">debugpy is not listening. Start using the VS Code task — not a manual terminal attach.</div>
+    </div>
+    <div class="error-card">
+      <div class="error-head">127.0.0.1:10000 refused</div>
+      <div class="error-body">
+        Azurite is not running. Start it with:<br>
+        <code>azurite.cmd --location .</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="section-label" style="margin-top:2rem">Quick Checklist — Every New Repo</div>
+  <div class="step">
+    <div class="step-body">
+      <ul class="checklist">
+        <li>Create <code>.venv</code> and install <code>requirements.txt</code></li>
+        <li>Install <code>debugpy</code> in <code>.venv</code> (and globally with <code>py</code> if needed)</li>
+        <li>Install and start <strong>Azurite</strong> for local storage</li>
+        <li>Add <code>.vscode/launch.json</code> with attach config on port 9091</li>
+        <li>Add <code>.vscode/tasks.json</code> with azurite + func host start tasks</li>
+        <li>Add <code>.vscode/settings.json</code> pointing to <code>.venv</code></li>
+        <li>Set <code>local.settings.json</code> with correct python path and debugpy args</li>
+        <li>Ensure function is NOT disabled — check <code>Disabled</code> flags are <code>"false"</code></li>
+        <li>Use short timer schedule <code>*/10 * * * * *</code> for easy breakpoint testing</li>
+        <li>Launch via <strong>Run &amp; Debug → Attach to Python Azure Functions → F5</strong></li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>Azure Functions Python Debug Setup Guide · Generated for reuse across repos</footer>
+
+</div>
+</body>
+</html>

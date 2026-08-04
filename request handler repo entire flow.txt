@@ -1,0 +1,130 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  send_test_message.py                                                       │
+│                                                                             │
+│  payload = {                                                                │
+│    "ActivityId": "DF4580CD-...",                                            │
+│    "ActivityName": "RBACINVENTORYREVIEW",                                   │
+│    "EventId": "B814C65E-...",                                               │
+│    "RoleAssignmentsId": "/subscriptions/.../RoleAssignments/fa942fc8...",   │
+│    "Zone": "GHQ", "Approver": "amith@ab-inbev.com", ...                    │
+│  }                                                                          │
+│  sender.send_messages(ServiceBusMessage(json.dumps(payload)))               │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │ Service Bus message
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  function_app.py                                                            │
+│                                                                             │
+│  @myApp.service_bus_topic_trigger(topic_name='request_handler')             │
+│  async def request_handler(azservicebus, client):                           │
+│      data = json.loads(azservicebus.get_body())                             │
+│      status = await client.get_status(data["ActivityId"])                   │
+│      # If Failed/Canceled → purge and restart                               │
+│      instance_id = await client.start_new(                                  │
+│          "orchestrate_activity",                                             │
+│          instance_id=data["ActivityId"],   ← "DF4580CD-..."                 │
+│          client_input=data                 ← full payload passed            │
+│      )                                                                      │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │ data (full payload)
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  OrchestrationClassifier.py                                                 │
+│                                                                             │
+│  def classify(self, context):                                               │
+│      data = context.get_input()   ← receives full payload                  │
+│      match data["ActivityName"]:                                            │
+│          case _:                  ← "RBACINVENTORYREVIEW" hits default      │
+│              yield context.call_activity(                                   │
+│                  "rbacinventoryreview",  ← lowercase                        │
+│                  data                   ← full payload passed               │
+│              )                                                              │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │ data (full payload)
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  az_activity_blueprint.py                                                   │
+│                                                                             │
+│  def make_func(fname):  # fname = "rbacinventoryreview"                     │
+│      @activity_blueprints.activity_trigger(input_name="payload")            │
+│      async def funcs(payload):   ← receives full payload                   │
+│          try:                                                               │
+│              objhandler = AzActivityClassifier(payload)                     │
+│              handler = getattr(objhandler, "rbacinventoryreview_activity")  │
+│              result = await handler()                                       │
+│          except Exception as e:                                             │
+│              DbActivityManager().log_exception_activityinfo(...)            │
+│              → INSERT INTO tblActivityInfo (on error only)                  │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │ payload
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  AzActivityClassifier.py                                                    │
+│                                                                             │
+│  async def rbacinventoryreview_activity(self):                              │
+│      result = await RbacInventoryReview(self.data)                          │
+│                        .remove_reviewed_role_assignment()                   │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │ self.data (full payload)
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RbacInventoryReview.py                                                     │
+│                                                                             │
+│  def __init__(self, json_data):                                             │
+│      self.role_assignment_id = json_data['RoleAssignmentsId']               │
+│      self.subscription_id    = json_data.get('SubscriptionId')              │
+│                             or json_data['RoleAssignmentsId'].split('/')[2] │
+│      self.scope  = json_data.get('Scope') or f"/subscriptions/{sub_id}"    │
+│      self.zone   = json_data['Zone'].lower()                                │
+│      self.env    = os.environ["Environment"].lower()  ← "local"            │
+│      self.auth_client = AuthorizationClient().get_auth_client(...)          │
+│      self.db = DB()                                                         │
+│                                                                             │
+│  async def remove_reviewed_role_assignment(self):                           │
+│      if self.env in ("local"):   ← env check                               │
+│          # deletion skipped for testing                                     │
+│          self._insert_activity_record()   ← called directly                │
+│                                                                             │
+│      # Production flow (when enabled):                                      │
+│      # self.auth_client.role_assignments.delete_by_id(role_assignment_id)  │
+│      # → on success → self._insert_activity_record()                       │
+│      # → on RoleAssignmentNotFound → self._insert_activity_record()        │
+│      # → on ScopeLocked → remove locks → retry → _insert_activity_record() │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │ self.data (full payload)
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  _insert_activity_record()                                                  │
+│                                                                             │
+│  MERGE INTO tblActivityAzInactiveRbac AS Target                             │
+│  USING (SELECT ?, ?, ...) AS SOURCE(ActivityId, EventId, ...)               │
+│  ON Target.EventId = Source.EventId                                         │
+│  AND Target.RoleAssignmentsId = Source.RoleAssignmentsId                    │
+│  WHEN NOT MATCHED THEN INSERT (...)                                         │
+│                                                                             │
+│  values = (                                                                 │
+│      payload["ActivityId"],   → "DF4580CD-..."                              │
+│      payload["EventId"],      → "B814C65E-..."                              │
+│      payload["PrincipalId"],  → None (not in test payload)                  │
+│      payload["RoleName"],     → "Contributor"                               │
+│      payload["Zone"],         → "GHQ"                                       │
+│      payload["Approver"],     → "amith@ab-inbev.com"                        │
+│      "WORKDAY",               → hardcoded CleanType                         │
+│      "Success",               → hardcoded Status                            │
+│      datetime.now(utc),       → current timestamp                           │
+│      ...                                                                    │
+│  )                                                                          │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │
+                               ▼
+                ┌──────────────────────────┐
+                │  tblActivityAzInactiveRbac│
+                │  ─────────────────────── │
+                │  ActivityId   DF4580CD   │
+                │  EventId      B814C65E   │
+                │  RoleName     Contributor│
+                │  Zone         GHQ        │
+                │  CleanType    WORKDAY     │
+                │  Approvers    amith@...  │
+                │  Status       Success    │
+                └──────────────────────────┘

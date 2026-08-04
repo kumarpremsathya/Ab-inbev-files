@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Service Principal — Reference Guide</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Segoe UI, Arial, sans-serif; background: #f4f6f9; color: #222; margin: 0; padding: 0; }
+    header { background: #005a9e; color: white; padding: 28px 40px; }
+    header h1 { margin: 0; font-size: 1.8rem; }
+    header p { margin: 6px 0 0; opacity: 0.85; font-size: 0.95rem; }
+    main { max-width: 960px; margin: 32px auto; padding: 0 24px 60px; }
+
+    h2 { color: #005a9e; border-bottom: 2px solid #005a9e; padding-bottom: 6px; margin-top: 44px; }
+    h3 { color: #003f6b; margin-top: 24px; }
+
+    .card { background: white; border-radius: 8px; padding: 20px 24px; margin-bottom: 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.09); }
+    .card-accent { border-left: 5px solid #005a9e; }
+    .card-warn  { border-left: 5px solid #f9a825; background: #fffde7; }
+    .card-green { border-left: 5px solid #2e7d32; background: #f1f8f1; }
+
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; line-height: 1.6; margin: 10px 0 0; }
+    code { font-family: Consolas, monospace; }
+    .ic { background: #e8f0fe; color: #003f6b; padding: 2px 7px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.88em; }
+
+    .flow-box { background: #1e1e1e; color: #9cdcfe; padding: 22px; border-radius: 8px; font-family: Consolas, monospace; font-size: 0.83rem; line-height: 1.8; overflow-x: auto; }
+    .flow-box .ret { color: #b5cea8; }
+    .flow-box .cmt { color: #6a9955; }
+
+    table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-top: 12px; }
+    th { background: #005a9e; color: white; padding: 12px 16px; text-align: left; font-size: 0.88rem; }
+    td { padding: 11px 16px; border-bottom: 1px solid #e8edf2; font-size: 0.88rem; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f0f6ff; }
+    td:first-child { font-family: Consolas, monospace; color: #003f6b; }
+
+    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+    .compare-box { background: white; border-radius: 8px; padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .compare-box h4 { margin: 0 0 12px; font-size: 0.95rem; }
+    .compare-box.human h4 { color: #b71c1c; }
+    .compare-box.spn h4 { color: #1b5e20; }
+    .compare-box ul { margin: 0; padding-left: 18px; font-size: 0.88rem; line-height: 1.8; }
+
+    .layer { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+    .layer-num { background: #005a9e; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; }
+    .layer-text { font-size: 0.9rem; }
+    .layer-arrow { color: #005a9e; font-size: 1.2rem; margin-left: 38px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Service Principal (SPN) — Reference Guide</h1>
+  <p>What it is · How it authenticates · Where it is used · Why it matters</p>
+</header>
+
+<main>
+
+  <!-- WHAT IS SPN -->
+  <h2>What is a Service Principal?</h2>
+  <div class="card card-accent">
+    <p style="font-size:1rem; margin:0 0 10px;">
+      A <strong>Service Principal</strong> is like a <em>user account for an application</em> — instead of a human logging in, 
+      your <strong>code</strong> uses it to authenticate and access Azure resources automatically.
+    </p>
+    <p style="margin:0; font-size:0.9rem; color:#444;">
+      Just as a human needs a <em>username + password</em> to log into Azure Portal,
+      an application needs a <em>client_id + client_secret + tenant_id</em> to authenticate programmatically.
+    </p>
+  </div>
+
+  <!-- THE 3 PROPERTIES -->
+  <h2>The 3 Key Properties</h2>
+  <table>
+    <thead>
+      <tr><th>Property</th><th>Human Equivalent</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>client_id</td><td>Username</td><td>Identifies which application is authenticating</td></tr>
+      <tr><td>client_secret</td><td>Password</td><td>Proves the identity of the application</td></tr>
+      <tr><td>tenant_id</td><td>Domain / Organisation</td><td>Identifies which Azure AD directory to authenticate against</td></tr>
+    </tbody>
+  </table>
+
+  <p>This is exactly what is stored in Azure Key Vault as a JSON string:</p>
+  <pre><code>{
+  "client_id": "abc123-...",
+  "secret":    "xyz789-...",
+  "tenant":    "tenant-id-..."
+}</code></pre>
+
+  <!-- HUMAN VS SPN -->
+  <h2>Human Account vs Service Principal</h2>
+  <div class="compare">
+    <div class="compare-box human">
+      <h4>❌ Human Account (not suitable for automation)</h4>
+      <ul>
+        <li>Requires MFA — blocks automation</li>
+        <li>Password expires — breaks scheduled jobs</li>
+        <li>Tied to a person — if they leave, access breaks</li>
+        <li>Cannot run unattended at 6 AM</li>
+        <li>Audit logs mixed with human activity</li>
+      </ul>
+    </div>
+    <div class="compare-box spn">
+      <h4>✅ Service Principal (designed for automation)</h4>
+      <ul>
+        <li>No MFA — fully automated</li>
+        <li>Controlled expiry — managed by team</li>
+        <li>Tied to application — independent of people</li>
+        <li>Runs unattended on any schedule</li>
+        <li>Clean audit trail per application</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- HOW AUTHENTICATION WORKS -->
+  <h2>How Authentication Works — Step by Step</h2>
+  <div class="card card-accent">
+    <div class="layer">
+      <div class="layer-num">1</div>
+      <div class="layer-text">Code wants to query Azure Resource Graph</div>
+    </div>
+    <div class="layer-arrow">↓</div>
+    <div class="layer">
+      <div class="layer-num">2</div>
+      <div class="layer-text">Azure asks: <strong>"Who are you?"</strong></div>
+    </div>
+    <div class="layer-arrow">↓</div>
+    <div class="layer">
+      <div class="layer-num">3</div>
+      <div class="layer-text">Code presents: <span class="ic">client_id</span> + <span class="ic">client_secret</span> + <span class="ic">tenant_id</span> (fetched from Key Vault)</div>
+    </div>
+    <div class="layer-arrow">↓</div>
+    <div class="layer">
+      <div class="layer-num">4</div>
+      <div class="layer-text">Azure AD verifies credentials → issues an <strong>OAuth2 access token</strong></div>
+    </div>
+    <div class="layer-arrow">↓</div>
+    <div class="layer">
+      <div class="layer-num">5</div>
+      <div class="layer-text">Code uses that token to call the Azure Resource Graph API</div>
+    </div>
+    <div class="layer-arrow">↓</div>
+    <div class="layer">
+      <div class="layer-num">6</div>
+      <div class="layer-text">Azure checks RBAC: <strong>"Does this SPN have permission to read resources?"</strong></div>
+    </div>
+    <div class="layer-arrow">↓</div>
+    <div class="layer">
+      <div class="layer-num">7</div>
+      <div class="layer-text" style="color:#2e7d32; font-weight:600;">✅ If yes → returns SQL Server / Database data</div>
+    </div>
+  </div>
+
+  <p>In code — <strong>shared_code/resourcegraph_client.py</strong>:</p>
+  <pre><code>credentials = ClientSecretCredential(
+    client_id     = spn_token["client_id"],    <span style="color:#6a9955"># identifies the app</span>
+    client_secret = spn_token["secret"],       <span style="color:#6a9955"># proves identity</span>
+    tenant_id     = spn_token["tenant"]        <span style="color:#6a9955"># which Azure AD org</span>
+)
+<span style="color:#6a9955"># Azure SDK handles OAuth token exchange internally ↑</span>
+res_graph_client = ResourceGraphClient(credentials)
+<span style="color:#6a9955"># client is now authenticated and ready to query Azure</span></code></pre>
+
+  <!-- TWO SPNs IN THIS PROJECT -->
+  <h2>Two SPNs Used in This Project</h2>
+  <table>
+    <thead>
+      <tr><th>Secret Name in Key Vault</th><th>Used For</th><th>Cloud</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>az-public-spn-reader</td>
+        <td>Read Azure Public resources (SQL servers, databases, etc.)</td>
+        <td>AzurePublicCloud</td>
+      </tr>
+      <tr>
+        <td>az-china-spn-reader</td>
+        <td>Read Azure China resources</td>
+        <td>AzureChinaCloud</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="card card-warn" style="margin-top:14px;">
+    <strong>Why two separate SPNs?</strong><br/>
+    Azure China is a completely separate Azure instance operated by 21Vianet — it has its own Azure AD, its own endpoints, and requires its own SPN registered specifically in the China tenant.
+  </div>
+
+  <!-- TWO LAYERS -->
+  <h2>Two Layers of SPN Authentication in This Project</h2>
+  <div class="card card-green">
+    <strong>Layer 1 — Access Key Vault</strong><br/>
+    <span class="ic">AZURE_CLIENT_ID</span> + <span class="ic">AZURE_CLIENT_SECRET</span> + <span class="ic">AZURE_TENANT_ID</span> stored in <span class="ic">local.settings.json</span><br/>
+    → Used by <strong>DefaultAzureCredential</strong> in <code>akv_secrets.py</code> to authenticate to Key Vault
+  </div>
+  <div style="text-align:center; font-size:1.4rem; color:#005a9e; margin:4px 0;">↓ unlocks ↓</div>
+  <div class="card card-green">
+    <strong>Layer 2 — Query Azure Resource Graph</strong><br/>
+    <span class="ic">az-public-spn-reader</span> / <span class="ic">az-china-spn-reader</span> — stored <em>inside</em> Key Vault<br/>
+    → Used by <strong>ClientSecretCredential</strong> in <code>resourcegraph_client.py</code> to authenticate to Azure Resource Graph
+  </div>
+
+  <h3>Why this layered approach?</h3>
+  <p>
+    The real query credentials (Layer 2) are <strong>never stored in code or config files</strong>.
+    They live only in Key Vault and are fetched securely at runtime.
+    Even if someone reads your source code or <span class="ic">local.settings.json</span>, 
+    they cannot access the Resource Graph — they would also need access to the Key Vault.
+  </p>
+
+  <div class="flow-box">
+    local.settings.json → AZURE_CLIENT_ID + SECRET + TENANT<br/>
+    &nbsp;&nbsp;&nbsp;&nbsp;└── DefaultAzureCredential → authenticates to <span class="ret">Azure Key Vault</span><br/>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── Key Vault returns SPN #2 credentials (JSON string)<br/>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── json.loads() → dict {client_id, secret, tenant}<br/>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── ClientSecretCredential → authenticates to <span class="ret">Azure Resource Graph</span><br/>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── returns SQL Server / Database data ✅
+  </div>
+
+  <!-- WHERE USED -->
+  <h2>Where SPN Authentication Appears in the Codebase</h2>
+  <table>
+    <thead>
+      <tr><th>File</th><th>SPN Used</th><th>What It Authenticates To</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>shared_code/akv_secrets.py</td>
+        <td>DefaultAzureCredential (Layer 1 SPN)</td>
+        <td>Azure Key Vault — to read secrets</td>
+      </tr>
+      <tr>
+        <td>shared_code/resourcegraph_client.py</td>
+        <td>az-public/china-spn-reader (Layer 2 SPN)</td>
+        <td>Azure Resource Graph — to query resources</td>
+      </tr>
+      <tr>
+        <td>shared_code/client_secret_auth.py</td>
+        <td>Any named Key Vault secret</td>
+        <td>General-purpose — used by other extractors</td>
+      </tr>
+      <tr>
+        <td>shared_code/authorization_client.py</td>
+        <td>Layer 2 SPN</td>
+        <td>Azure Authorization — for RBAC role queries</td>
+      </tr>
+      <tr>
+        <td>shared_code/subscriptions_client.py</td>
+        <td>Layer 2 SPN</td>
+        <td>Azure Subscriptions — to list subscriptions</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SUMMARY -->
+  <h2>Summary</h2>
+  <div class="card card-accent">
+    <ul style="line-height:2; margin:0; font-size:0.92rem;">
+      <li>A <strong>Service Principal</strong> = application identity in Azure AD (like a user account for code)</li>
+      <li>Has 3 properties: <span class="ic">client_id</span>, <span class="ic">client_secret</span>, <span class="ic">tenant_id</span></li>
+      <li>Azure AD verifies these → issues an <strong>OAuth2 token</strong> → token is used for all API calls</li>
+      <li>Stored in <strong>Azure Key Vault</strong> as a JSON string — never hardcoded in code</li>
+      <li><span class="ic">json.loads()</span> converts the Key Vault string into a Python dict at runtime</li>
+      <li>This project uses <strong>2 layers</strong>: one SPN to open Key Vault, another inside Key Vault to query Azure</li>
+      <li>Separate SPNs exist for <strong>Public Cloud</strong> and <strong>China Cloud</strong></li>
+    </ul>
+  </div>
+
+</main>
+</body>
+</html>

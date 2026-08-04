@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inactive RBAC Flow Reference</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #1f2933;
+      --muted: #5f6b7a;
+      --line: #d7dee8;
+      --accent: #0f766e;
+      --accent-soft: #e6f4f1;
+      --warn: #9a5b13;
+      --warn-soft: #fff5df;
+      --code: #111827;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      line-height: 1.55;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    header {
+      background: #102a43;
+      color: white;
+      padding: 32px 24px;
+    }
+
+    header .inner,
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 22px;
+      color: #102a43;
+    }
+
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 18px;
+      color: #243b53;
+    }
+
+    p {
+      margin: 8px 0;
+    }
+
+    main {
+      padding: 24px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      margin-bottom: 18px;
+    }
+
+    .subtitle {
+      color: #d9e2ec;
+      margin: 0;
+      max-width: 820px;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .meta div {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .meta strong {
+      display: block;
+      color: white;
+      margin-bottom: 3px;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 14px 16px;
+      border-radius: 6px;
+      margin: 14px 0;
+    }
+
+    .warning {
+      border-left-color: var(--warn);
+      background: var(--warn-soft);
+    }
+
+    .flow {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .flow li {
+      position: relative;
+      padding: 0 0 22px 46px;
+      border-left: 2px solid var(--line);
+      margin-left: 16px;
+    }
+
+    .flow li:last-child {
+      border-left-color: transparent;
+      padding-bottom: 0;
+    }
+
+    .flow li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: -17px;
+      top: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .flow strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #102a43;
+    }
+
+    code,
+    pre {
+      font-family: Consolas, "Courier New", monospace;
+      color: var(--code);
+      background: #eef2f7;
+      border-radius: 5px;
+    }
+
+    code {
+      padding: 2px 5px;
+      font-size: 0.95em;
+    }
+
+    pre {
+      padding: 14px;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      text-align: left;
+      vertical-align: top;
+      border: 1px solid var(--line);
+      padding: 10px;
+    }
+
+    th {
+      background: #eef2f7;
+      color: #102a43;
+    }
+
+    ul {
+      padding-left: 22px;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media print {
+      body {
+        background: white;
+      }
+
+      header {
+        background: white;
+        color: var(--ink);
+        border-bottom: 2px solid var(--line);
+      }
+
+      .subtitle {
+        color: var(--muted);
+      }
+
+      section {
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="inner">
+      <h1>Inactive RBAC Cleanup Flow Reference</h1>
+      <p class="subtitle">End-to-end processing flow for Azure inactive/deleted user RBAC cleanup in the ABI Cloud Management request handler repo.</p>
+      <div class="meta">
+        <div>
+          <strong>Request prep file</strong>
+          <span>abi_cloud_mgmt/Catalog/Azure/InactiveRbac/InactiveRbac.py</span>
+        </div>
+        <div>
+          <strong>Execution file</strong>
+          <span>Catalog/Azure/InactiveRbac/InactiveRbac.py</span>
+        </div>
+        <div>
+          <strong>Main activity table</strong>
+          <span>tblActivityAzInactiveRbac</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>Purpose</h2>
+      <p>
+        The Inactive RBAC flow removes Azure role assignments for inactive or deleted users. The repo is split into two major parts:
+      </p>
+      <ul>
+        <li><code>abi_cloud_mgmt</code> prepares ServiceNow data, inserts event/activity rows, and publishes work to Service Bus.</li>
+        <li>The root Durable Functions app receives handler messages, runs the Azure action, and updates activity status through status monitoring.</li>
+      </ul>
+      <div class="callout warning">
+        <strong>Current repo note:</strong>
+        Some <code>INACTIVERBAC</code> switch cases and activity registrations are commented for testing. The flow below describes the intended full path once those are enabled.
+      </div>
+    </section>
+
+    <section>
+      <h2>High-Level Flow</h2>
+      <pre>Request payload
+  -> RequestReceiver
+  -> AzInactiveRbac.snow_data()
+  -> ServiceNow item
+  -> tblEventMaster
+  -> NewActivity / AzPayloadDeserializer
+  -> AzInactiveRbac.activity_data()
+  -> tblActivityAzInactiveRbac + tblEventPendingActivity
+  -> Processor publishes request_handler message
+  -> Durable orchestration
+  -> root InactiveRbac.delete_inactive_users_roles()
+  -> StatusMonitor updates activity row
+  -> Processor detects all rows done
+  -> tblEventCompletedActivity
+  -> CompletedActivity finalizes ServiceNow and tblEventMaster</pre>
+    </section>
+
+    <section>
+      <h2>Detailed Step Flow</h2>
+      <ol class="flow">
+        <li>
+          <strong>Request enters the receiver</strong>
+          The Azure Function receiver accepts the request or Service Bus message and passes the payload to <code>RequestReceiver.request_initilize(data)</code>.
+          <br>
+          File: <code>abi_cloud_mgmt/function_app.py</code>
+        </li>
+        <li>
+          <strong>RequestReceiver routes by cloud</strong>
+          For <code>payload.cloud == "Azure"</code>, it calls <code>AzActivityNames().get_activity_type_data(data)</code>.
+          <br>
+          File: <code>abi_cloud_mgmt/RequestReceiver/RequestReceiver.py</code>
+        </li>
+        <li>
+          <strong>Azure activity mapper prepares ServiceNow payload</strong>
+          For <code>ActivityName == "INACTIVERBAC"</code>, the intended call is <code>AzInactiveRbac().snow_data(data)</code>.
+          This builds <code>description</code>, <code>short_description</code>, <code>business_service</code>, and ServiceNow catalog variables.
+          <br>
+          File: <code>abi_cloud_mgmt/RequestReceiver/ActivityNames/AzActivityNames.py</code>
+        </li>
+        <li>
+          <strong>ServiceNow request/change/incident is created</strong>
+          Depending on <code>ActivityType</code>, the request is sent through <code>SnowRequest</code>, <code>SnowChangeRequest</code>, or incident handling.
+          Then the event is inserted into <code>tblEventMaster</code>.
+          <br>
+          File: <code>abi_cloud_mgmt/RequestReceiver/RequestReceiver.py</code>
+        </li>
+        <li>
+          <strong>NewActivity scans approved or queued work</strong>
+          The timer processor calls <code>NewActivity().check_db_for_new_activity()</code>, which reads <code>tblEventMaster</code> through <code>get_new_activity()</code>.
+          <br>
+          Files: <code>abi_cloud_mgmt/RequestProcessor/RequestProcessor.py</code>, <code>abi_cloud_mgmt/RequestProcessor/ActivityType/NewActivity.py</code>
+        </li>
+        <li>
+          <strong>Payload is deserialized into activity rows</strong>
+          For <code>ActivityName == "INACTIVERBAC"</code>, the intended call is <code>self.objinactiverbac.activity_data(dataset)</code>.
+          <br>
+          File: <code>abi_cloud_mgmt/RequestProcessor/PayloadDeserializer/AzPayloadDeserializer.py</code>
+        </li>
+        <li>
+          <strong>AzInactiveRbac.activity_data inserts work items</strong>
+          It reads <code>dataset.Payload</code>, loops through <code>inactive_user_details</code>, expands role assignments and scopes, determines scope type, resolves zone, and merges rows into <code>tblActivityAzInactiveRbac</code>.
+          It also inserts a row into <code>tblEventPendingActivity</code>.
+          <br>
+          File: <code>abi_cloud_mgmt/Catalog/Azure/InactiveRbac/InactiveRbac.py</code>
+        </li>
+        <li>
+          <strong>PendingActivity picks up pending work</strong>
+          <code>PendingActivity.get_next_pending_activity()</code> reads <code>tblEventPendingActivity</code> and routes Azure work to <code>AzProcessor.initialize(dataset)</code>.
+          <br>
+          File: <code>abi_cloud_mgmt/RequestProcessor/ActivityType/PendingActivity.py</code>
+        </li>
+        <li>
+          <strong>AzProcessor resolves the activity table</strong>
+          For <code>INACTIVERBAC</code>, <code>get_table_and_topic_names()</code> returns <code>tblActivityAzInactiveRbac</code>.
+          <br>
+          File: <code>abi_cloud_mgmt/RequestProcessor/Processor/AzProcessor.py</code>
+        </li>
+        <li>
+          <strong>Processor publishes Service Bus messages</strong>
+          <code>Processor.queue_processor()</code> reads rows from <code>tblActivityAzInactiveRbac</code> where status is <code>In-Progress</code> or <code>Retry</code>. Each row is converted into a message and sent to the <code>request_handler</code> topic.
+          <br>
+          File: <code>abi_cloud_mgmt/RequestProcessor/Processor/Processor.py</code>
+        </li>
+        <li>
+          <strong>Root request_handler starts Durable orchestration</strong>
+          The root Azure Function receives the Service Bus message from <code>request_handler</code>, checks if the orchestration instance already exists, and starts <code>orchestrate_activity</code>.
+          <br>
+          File: <code>function_app.py</code>
+        </li>
+        <li>
+          <strong>Orchestrator calls the activity</strong>
+          For normal activities, <code>OrchestrationClassifier</code> calls <code>context.call_activity(str(data["ActivityName"]).lower(), data)</code>. For <code>INACTIVERBAC</code>, this becomes activity name <code>inactiverbac</code>.
+          <br>
+          File: <code>Orchestration/OrchestrationClassifier.py</code>
+        </li>
+        <li>
+          <strong>Activity blueprint invokes the classifier method</strong>
+          <code>az_activity_blueprint.py</code> dynamically maps activity name <code>inactiverbac</code> to <code>AzActivityClassifier.inactiverbac_activity()</code>.
+          <br>
+          File: <code>az_activity_blueprint.py</code>
+        </li>
+        <li>
+          <strong>Azure RBAC deletion runs</strong>
+          <code>AzActivityClassifier.inactiverbac_activity()</code> calls <code>InactiveRbac(self.data).delete_inactive_users_roles()</code>.
+          That method deletes the role assignment by ID, handles last-admin assignment errors, handles scope locks, removes locks if needed, retries, and restores locks.
+          <br>
+          File: <code>Catalog/Azure/InactiveRbac/InactiveRbac.py</code>
+        </li>
+        <li>
+          <strong>Durable status becomes Completed or Failed</strong>
+          The deletion method itself does not update SQL on success. If it returns normally, Durable marks the activity/orchestration as completed. If it raises, the blueprint logs the error into <code>tblActivityInfo</code> and Durable marks it failed.
+        </li>
+        <li>
+          <strong>StatusMonitor updates activity table</strong>
+          The root timer <code>status_monitor</code> runs every five minutes. It checks Durable orchestration status and updates the matching row in <code>tblActivityAzInactiveRbac</code>.
+          <br>
+          File: <code>StatusMonitor/StatusMonitor.py</code>
+        </li>
+        <li>
+          <strong>Processor detects completion</strong>
+          On a later processing cycle, if no rows remain in <code>In-Progress</code> or <code>Retry</code>, <code>Processor.queue_processor()</code> counts success and failure rows, then inserts a summary into <code>tblEventCompletedActivity</code>.
+        </li>
+        <li>
+          <strong>CompletedActivity finalizes the event</strong>
+          <code>CompletedActivity.cleanup_completed_activity()</code> updates ServiceNow, updates <code>tblEventMaster</code>, deletes tracking rows from <code>tblEventPendingActivity</code> and <code>tblEventCompletedActivity</code>, and sends notification.
+          <br>
+          File: <code>abi_cloud_mgmt/RequestProcessor/ActivityType/CompletedActivity.py</code>
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Important Methods</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>File</th>
+            <th>Responsibility</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>AzInactiveRbac.snow_data(data)</code></td>
+            <td><code>abi_cloud_mgmt/Catalog/Azure/InactiveRbac/InactiveRbac.py</code></td>
+            <td>Builds ServiceNow description, short description, business service, and catalog variables.</td>
+          </tr>
+          <tr>
+            <td><code>AzInactiveRbac.activity_data(dataset)</code></td>
+            <td><code>abi_cloud_mgmt/Catalog/Azure/InactiveRbac/InactiveRbac.py</code></td>
+            <td>Expands payload into rows in <code>tblActivityAzInactiveRbac</code> and marks event pending.</td>
+          </tr>
+          <tr>
+            <td><code>Processor.queue_processor(tblname, dataset)</code></td>
+            <td><code>abi_cloud_mgmt/RequestProcessor/Processor/Processor.py</code></td>
+            <td>Publishes individual activity rows to Service Bus topic <code>request_handler</code>.</td>
+          </tr>
+          <tr>
+            <td><code>InactiveRbac.delete_inactive_users_roles()</code></td>
+            <td><code>Catalog/Azure/InactiveRbac/InactiveRbac.py</code></td>
+            <td>Deletes Azure role assignment and handles special Azure errors.</td>
+          </tr>
+          <tr>
+            <td><code>StatusMonitor.update_status()</code></td>
+            <td><code>StatusMonitor/StatusMonitor.py</code></td>
+            <td>Polls Durable status and updates activity table row status.</td>
+          </tr>
+          <tr>
+            <td><code>CompletedActivity.cleanup_completed_activity()</code></td>
+            <td><code>abi_cloud_mgmt/RequestProcessor/ActivityType/CompletedActivity.py</code></td>
+            <td>Finalizes ServiceNow and master event state after all rows are done.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Status Transitions</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Stage</th>
+            <th>Table</th>
+            <th>Status / Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Request created</td>
+            <td><code>tblEventMaster</code></td>
+            <td><code>Pending Approval</code> or <code>Queued</code></td>
+          </tr>
+          <tr>
+            <td>Approved / ready for processing</td>
+            <td><code>tblEventMaster</code></td>
+            <td><code>In-Progress</code></td>
+          </tr>
+          <tr>
+            <td>Activity rows created</td>
+            <td><code>tblActivityAzInactiveRbac</code></td>
+            <td><code>In-Progress</code></td>
+          </tr>
+          <tr>
+            <td>Work pending</td>
+            <td><code>tblEventPendingActivity</code></td>
+            <td>Contains event/activity with next retry time.</td>
+          </tr>
+          <tr>
+            <td>Durable completed</td>
+            <td><code>tblActivityAzInactiveRbac</code></td>
+            <td><code>Success</code>, comment <code>Implemented Successfully</code></td>
+          </tr>
+          <tr>
+            <td>Durable failed</td>
+            <td><code>tblActivityAzInactiveRbac</code></td>
+            <td><code>Retry</code> or <code>Failed</code>, depending on runtime status.</td>
+          </tr>
+          <tr>
+            <td>All rows done</td>
+            <td><code>tblEventCompletedActivity</code></td>
+            <td><code>Success</code>, <code>Failed</code>, or partial failure summary.</td>
+          </tr>
+          <tr>
+            <td>Final cleanup</td>
+            <td><code>tblEventMaster</code></td>
+            <td>Final status such as <code>Completed</code>, <code>Remediated</code>, or failure state.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Current Wiring Checklist</h2>
+      <p>For the full flow to run, these pieces need to be active:</p>
+      <ul>
+        <li><code>AzActivityNames.py</code>: enable <code>case "INACTIVERBAC": AzInactiveRbac().snow_data(data)</code>.</li>
+        <li><code>AzPayloadDeserializer.py</code>: enable <code>case "INACTIVERBAC": self.objinactiverbac.activity_data(dataset)</code>.</li>
+        <li><code>az_activity_blueprint.py</code>: include <code>"INACTIVERBAC"</code> in the <code>activities</code> list.</li>
+        <li><code>Activity/AzActivityClassifier.py</code>: enable import and <code>inactiverbac_activity()</code>.</li>
+        <li><code>abi_cloud_mgmt/RequestProcessor/RequestProcessor.py</code>: ensure pending and completed processors are enabled when testing the full lifecycle.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Compact Sequence</h2>
+      <pre>AzInactiveRbac.snow_data()
+  -> ServiceNow create/update
+  -> tblEventMaster
+  -> NewActivity.check_db_for_new_activity()
+  -> AzPayloadDeserializer.deserialize()
+  -> AzInactiveRbac.activity_data()
+  -> tblActivityAzInactiveRbac
+  -> tblEventPendingActivity
+  -> PendingActivity.get_next_pending_activity()
+  -> AzProcessor.initialize()
+  -> Processor.queue_processor()
+  -> Service Bus topic: request_handler
+  -> root function_app.request_handler()
+  -> orchestrate_activity
+  -> OrchestrationClassifier.call_activity("inactiverbac")
+  -> AzActivityClassifier.inactiverbac_activity()
+  -> InactiveRbac.delete_inactive_users_roles()
+  -> StatusMonitor.update_status()
+  -> tblActivityAzInactiveRbac: Success/Retry/Failed
+  -> tblEventCompletedActivity
+  -> CompletedActivity.cleanup_completed_activity()
+  -> ServiceNow final update + tblEventMaster final status</pre>
+      <p class="small">Generated for local repo reference. Open this file in a browser and use Print or Save as PDF if a downloadable PDF copy is needed.</p>
+    </section>
+  </main>
+</body>
+</html>

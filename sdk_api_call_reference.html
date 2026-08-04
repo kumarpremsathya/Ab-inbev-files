@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>API Clients — Project Reference</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Segoe UI, Arial, sans-serif; background: #f4f6f9; color: #222; margin: 0; padding: 0; }
+    header { background: #005a9e; color: white; padding: 28px 40px; }
+    header h1 { margin: 0; font-size: 1.8rem; }
+    header p { margin: 6px 0 0; opacity: 0.85; font-size: 0.95rem; }
+    main { max-width: 1020px; margin: 32px auto; padding: 0 24px 60px; }
+
+    h2 { color: #005a9e; border-bottom: 2px solid #005a9e; padding-bottom: 6px; margin-top: 44px; font-size: 1.2rem; }
+
+    .client-block { background: white; border-radius: 8px; margin-bottom: 28px; box-shadow: 0 1px 5px rgba(0,0,0,0.09); overflow: hidden; }
+    .client-header { display: flex; align-items: center; gap: 16px; padding: 16px 22px; }
+    .client-badge { font-family: Consolas, monospace; font-size: 0.95rem; font-weight: 700; padding: 5px 14px; border-radius: 20px; white-space: nowrap; }
+
+    .badge-rg   { background: #e3f2fd; color: #0d47a1; }
+    .badge-gc   { background: #e8f5e9; color: #1b5e20; }
+    .badge-sc   { background: #fce4ec; color: #880e4f; }
+    .badge-csa  { background: #fff3e0; color: #bf360c; }
+    .badge-spn  { background: #f3e5f5; color: #4a148c; }
+
+    .client-header-text h3 { margin: 0 0 3px; font-size: 1rem; color: #003f6b; }
+    .client-header-text p  { margin: 0; font-size: 0.85rem; color: #555; }
+
+    .endpoint-tag { font-family: Consolas, monospace; font-size: 0.78rem; background: #1e1e1e; color: #9cdcfe; padding: 3px 10px; border-radius: 4px; margin-left: auto; white-space: nowrap; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f0f4f8; color: #003f6b; padding: 10px 16px; text-align: left; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; border-top: 1px solid #e0e7ef; }
+    td { padding: 10px 16px; border-top: 1px solid #f0f4f8; font-size: 0.88rem; vertical-align: top; }
+    tr:hover td { background: #f7faff; }
+    td:first-child { font-family: Consolas, monospace; color: #005a9e; font-size: 0.83rem; }
+    td:nth-child(2) { color: #444; }
+
+    .pattern-box { background: #1e1e1e; color: #d4d4d4; padding: 20px; border-radius: 8px; font-family: Consolas, monospace; font-size: 0.83rem; line-height: 1.9; overflow-x: auto; margin-top: 10px; }
+    .pattern-box .kw  { color: #9cdcfe; }
+    .pattern-box .arr { color: #569cd6; }
+    .pattern-box .url { color: #ce9178; }
+    .pattern-box .cmt { color: #6a9955; }
+
+    .ic { background: #e8f0fe; color: #003f6b; padding: 2px 7px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.85em; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>API Clients — Project Reference</h1>
+  <p>Which API client is used in each file · Endpoint · Purpose · SDK</p>
+</header>
+
+<main>
+
+  <!-- SUMMARY PATTERN -->
+  <h2>Quick Summary</h2>
+  <div class="pattern-box">
+    <span class="kw">Resource data</span> (SQL, RBAC, MgmtGroups) <span class="arr">→</span> <span class="kw">ResourceGraph()</span>     <span class="arr">→</span> <span class="url">management.azure.com</span><br/>
+    <span class="kw">Azure AD data</span> (Users, Groups, SPNs)    <span class="arr">→</span> <span class="kw">GraphClient()</span>        <span class="arr">→</span> <span class="url">graph.microsoft.com</span><br/>
+    <span class="kw">Subscription listing</span>                   <span class="arr">→</span> <span class="kw">SubscriptionsClient()</span> <span class="arr">→</span> <span class="url">management.azure.com</span><br/>
+    <span class="kw">Email notifications</span>                    <span class="arr">→</span> <span class="kw">ClientSecretAuth()</span>    <span class="arr">→</span> <span class="url">SMTP service</span><br/>
+    <span class="kw">3rd party APIs</span> (BeyondTrust, Saviynt)  <span class="arr">→</span> <span class="kw">SpnToken()</span>            <span class="arr">→</span> <span class="url">custom HTTP calls</span>
+  </div>
+
+  <!-- RESOURCE GRAPH -->
+  <h2>1. ResourceGraph()</h2>
+  <div class="client-block">
+    <div class="client-header">
+      <span class="client-badge badge-rg">ResourceGraph()</span>
+      <div class="client-header-text">
+        <h3>Azure Resource Graph API</h3>
+        <p>Queries resources across all subscriptions at once using KQL — faster than calling per-subscription APIs</p>
+      </div>
+      <span class="endpoint-tag">POST management.azure.com/providers/Microsoft.ResourceGraph/resources</span>
+    </div>
+    <table>
+      <thead><tr><th>File</th><th>What It Queries</th></tr></thead>
+      <tbody>
+        <tr><td>AzSQLServers/sql_servers.py</td><td>SQL Servers &amp; Databases (name, location, admin, TLS, AAD config, edition, size)</td></tr>
+        <tr><td>AzRBAC/rbac.py</td><td>RBAC role assignments across all subscriptions</td></tr>
+        <tr><td>AzRbacRoles/rbacRoles.py</td><td>RBAC role definitions (built-in &amp; custom)</td></tr>
+        <tr><td>AzManagementGroups/management_groups.py</td><td>Azure Management Group hierarchy</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- GRAPH CLIENT -->
+  <h2>2. GraphClient()</h2>
+  <div class="client-block">
+    <div class="client-header">
+      <span class="client-badge badge-gc">GraphClient()</span>
+      <div class="client-header-text">
+        <h3>Microsoft Graph API</h3>
+        <p>Queries Azure AD objects — users, groups, SPNs, sign-in logs, auth methods via Microsoft Graph SDK</p>
+      </div>
+      <span class="endpoint-tag">graph.microsoft.com/v1.0 or /beta</span>
+    </div>
+    <table>
+      <thead><tr><th>File</th><th>What It Queries</th></tr></thead>
+      <tbody>
+        <tr><td>AzUsers/users.py</td><td>Azure AD Users (profile, licenses, MFA status)</td></tr>
+        <tr><td>AzGroups/groups.py</td><td>Azure AD Groups and their members</td></tr>
+        <tr><td>AzSPNs/spns.py</td><td>Service Principals (app registrations, credentials, owners)</td></tr>
+        <tr><td>AzEntraRBAC/entra_rbac.py</td><td>Entra (Azure AD) RBAC role assignments</td></tr>
+        <tr><td>AzIdentityGovernance/groups_zero_members.py</td><td>Groups with zero members</td></tr>
+        <tr><td>AzIdentityGovernance/spn_signin_logs.py</td><td>Service Principal sign-in logs</td></tr>
+        <tr><td>AzIdentityGovernance/users_auth_methods.py</td><td>User authentication methods (MFA, passwordless)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- SUBSCRIPTIONS CLIENT -->
+  <h2>3. SubscriptionsClient()</h2>
+  <div class="client-block">
+    <div class="client-header">
+      <span class="client-badge badge-sc">SubscriptionsClient()</span>
+      <div class="client-header-text">
+        <h3>Azure Subscriptions API</h3>
+        <p>Lists all Azure subscriptions — used to iterate over each subscription individually</p>
+      </div>
+      <span class="endpoint-tag">GET management.azure.com/subscriptions</span>
+    </div>
+    <table>
+      <thead><tr><th>File</th><th>What It Does</th></tr></thead>
+      <tbody>
+        <tr><td>AzPIM/pim.py</td><td>Lists subscriptions before fetching PIM schedule requests per subscription</td></tr>
+        <tr><td>AzRbacMetrics/rbacMetrics.py</td><td>Lists subscriptions before computing RBAC metrics per subscription</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- CLIENT SECRET AUTH -->
+  <h2>4. ClientSecretAuth()</h2>
+  <div class="client-block">
+    <div class="client-header">
+      <span class="client-badge badge-csa">ClientSecretAuth()</span>
+      <div class="client-header-text">
+        <h3>SMTP / Email Service Authentication</h3>
+        <p>Builds a <span class="ic">ClientSecretCredential</span> from Key Vault — used exclusively for email notification services</p>
+      </div>
+      <span class="endpoint-tag">SMTP service (Brewmation)</span>
+    </div>
+    <table>
+      <thead><tr><th>File</th><th>What It Does</th></tr></thead>
+      <tbody>
+        <tr><td>shared_code/EmailNotification/notify_iam.py</td><td>Sends IAM-related email notifications</td></tr>
+        <tr><td>shared_code/EmailNotification/notify_keyvault_certificates.py</td><td>Sends Key Vault certificate expiry alerts</td></tr>
+        <tr><td>shared_code/EmailNotification/notify_keyvault_keys.py</td><td>Sends Key Vault keys expiry alerts</td></tr>
+        <tr><td>shared_code/EmailNotification/notify_keyvault_unified_owners.py</td><td>Sends unified Key Vault owner notifications</td></tr>
+        <tr><td>shared_code/EmailNotification/notify_keyvault.py</td><td>General Key Vault expiry notifications</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- SPN TOKEN -->
+  <h2>5. SpnToken() — Direct Token (3rd Party APIs)</h2>
+  <div class="client-block">
+    <div class="client-header">
+      <span class="client-badge badge-spn">SpnToken()</span>
+      <div class="client-header-text">
+        <h3>Custom / 3rd Party API Authentication</h3>
+        <p>Fetches raw SPN credentials from Key Vault for use in direct HTTP calls — no Azure SDK client involved</p>
+      </div>
+      <span class="endpoint-tag">Custom REST endpoints</span>
+    </div>
+    <table>
+      <thead><tr><th>File</th><th>API Called</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>BeyondTrustAccounts/BeyondTrustAccounts.py</td>
+          <td>BeyondTrust PAM REST API</td>
+          <td>Fetches privileged account data from BeyondTrust Password Safe</td>
+        </tr>
+        <tr>
+          <td>SaviyntMicsData/saviynt_mics.py</td>
+          <td>Saviynt IGA REST API</td>
+          <td>Fetches MICS (Managed Identity &amp; Cloud Security) data from Saviynt</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- HOW THEY ALL CONNECT -->
+  <h2>How They All Connect to Shared Code</h2>
+  <div class="pattern-box">
+    <span class="cmt">── All clients ultimately go through shared_code ──</span><br/><br/>
+    <span class="kw">ResourceGraph()</span>     <span class="arr">→</span> shared_code/resourcegraph_client.py  <span class="arr">→</span> SpnToken() <span class="arr">→</span> AkvSecrets()<br/>
+    <span class="kw">GraphClient()</span>        <span class="arr">→</span> shared_code/graphservice_client.py  <span class="arr">→</span> SpnToken() <span class="arr">→</span> AkvSecrets()<br/>
+    <span class="kw">SubscriptionsClient()</span> <span class="arr">→</span> shared_code/subscriptions_client.py <span class="arr">→</span> SpnToken() <span class="arr">→</span> AkvSecrets()<br/>
+    <span class="kw">ClientSecretAuth()</span>    <span class="arr">→</span> shared_code/client_secret_auth.py  <span class="arr">→</span> SpnToken() <span class="arr">→</span> AkvSecrets()<br/>
+    <span class="kw">SpnToken()</span>            <span class="arr">→</span> shared_code/spn_token.py           <span class="arr">→</span> AkvSecrets()<br/><br/>
+    <span class="cmt">── Every single client fetches credentials from Key Vault at runtime ──</span>
+  </div>
+
+</main>
+</body>
+</html>

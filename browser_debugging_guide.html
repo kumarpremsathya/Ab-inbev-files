@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Browser Debugging Guide — Frontend to Backend</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 960px; margin: 30px auto; padding: 0 24px; background: #f9f9f9; color: #222; }
+    h1 { background: #0078d4; color: white; padding: 16px 20px; border-radius: 6px; }
+    h2 { color: #0078d4; border-bottom: 2px solid #0078d4; padding-bottom: 6px; margin-top: 36px; }
+    h3 { color: #444; margin-top: 20px; }
+    pre, code { background: #1e1e1e; color: #d4d4d4; padding: 12px 16px; border-radius: 5px; font-size: 13px; overflow-x: auto; display: block; margin: 8px 0; }
+    code.inline { display: inline; padding: 2px 6px; font-size: 13px; border-radius: 3px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th { background: #0078d4; color: white; padding: 10px; text-align: left; }
+    td { padding: 9px 10px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    tr:nth-child(even) { background: #f0f6ff; }
+    .box { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 16px 20px; margin-top: 16px; }
+    .tip { background: #e6f4ea; border-left: 4px solid #107c10; padding: 10px 16px; border-radius: 4px; margin-top: 10px; }
+    .warn { background: #fff4e0; border-left: 4px solid #d83b01; padding: 10px 16px; border-radius: 4px; margin-top: 10px; }
+    .tag { display: inline-block; background: #0078d4; color: white; border-radius: 4px; padding: 2px 8px; font-size: 12px; margin-right: 4px; }
+    .tag.green { background: #107c10; }
+    .tag.red { background: #d40000; }
+    .tag.orange { background: #d83b01; }
+  </style>
+</head>
+<body>
+
+<h1>Browser Debugging Guide — Frontend to Backend</h1>
+<p>Reference for debugging HTTP requests from HTML frontend to Azure Function backend.</p>
+
+<!-- ==================== SECTION 1 ==================== -->
+<h2>1. HTTP Methods</h2>
+<div class="box">
+  <table>
+    <tr><th>Method</th><th>Purpose</th><th>Has Body?</th><th>Used When</th></tr>
+    <tr><td><strong>GET</strong></td><td>Fetch data</td><td>No</td><td>Load a page, read resources</td></tr>
+    <tr><td><strong>POST</strong></td><td>Send data to create/trigger</td><td><strong>Yes</strong></td><td>Submit a form, trigger a function</td></tr>
+    <tr><td><strong>PUT</strong></td><td>Update existing resource</td><td>Yes</td><td>Edit/update data</td></tr>
+    <tr><td><strong>DELETE</strong></td><td>Delete a resource</td><td>No</td><td>Remove data</td></tr>
+  </table>
+  <div class="tip">Our HTML uses <strong>POST</strong> because we are submitting a new Policy Exemption request.</div>
+</div>
+
+<!-- ==================== SECTION 2 ==================== -->
+<h2>2. Request Body / Payload</h2>
+<div class="box">
+  <p>The <strong>body</strong> is the data sent with a POST request.</p>
+
+  <h3>In HTML (JavaScript fetch)</h3>
+  <pre>body: JSON.stringify(payload)   // converts JS object → JSON string</pre>
+
+  <h3>In Python test script (requests module)</h3>
+  <pre>response = requests.post(url, json=payload)  # auto-converts dict → JSON</pre>
+
+  <h3>In Azure Function (receiving side)</h3>
+  <pre>data = req.get_json()   # converts JSON string back → Python dict</pre>
+
+  <div class="tip">Both HTML and Python test script do the same thing. The function cannot tell the difference.</div>
+</div>
+
+<!-- ==================== SECTION 3 ==================== -->
+<h2>3. Headers</h2>
+<div class="box">
+  <p>Metadata sent with every request. Most important for JSON APIs:</p>
+  <pre>headers: { "Content-Type": "application/json" }</pre>
+  <p>This tells the server: <em>"my body is JSON, not a form or plain text"</em>.<br>
+  Without this header, <code class="inline">req.get_json()</code> can fail.</p>
+</div>
+
+<!-- ==================== SECTION 4 ==================== -->
+<h2>4. Full API Call Flow</h2>
+<div class="box">
+  <pre>Browser (port 5500)                    Azure Function (port 7071)
+  |                                              |
+  |--- OPTIONS (CORS preflight) --------------->|   ← browser does this automatically
+  |&lt;-- 200 + CORS headers ---------------------|
+  |                                              |
+  |--- POST /api/test_request_receiver -------->|
+  |    Headers: Content-Type: application/json  |
+  |    Body: { "ActivityType": "Request", ... } |
+  |                                              |
+  |&lt;-- 200 "Done. SnowItemId: " --------------|</pre>
+  <div class="warn"><strong>CORS preflight</strong>: Browser sends an OPTIONS request with empty body before the real POST. If the function calls <code class="inline">req.get_json()</code> on that OPTIONS request, it crashes. Fix: add <code class="inline">"Host": { "CORS": "*" }</code> to <strong>local.settings.json</strong> and restart func.</div>
+</div>
+
+<!-- ==================== SECTION 5 ==================== -->
+<h2>5. HTTP Status Codes</h2>
+<div class="box">
+  <table>
+    <tr><th>Code</th><th>Meaning</th><th>Common Cause</th></tr>
+    <tr><td><span class="tag green">200</span></td><td>Success</td><td>Everything worked</td></tr>
+    <tr><td><span class="tag orange">400</span></td><td>Bad Request</td><td>Wrong or missing payload fields</td></tr>
+    <tr><td><span class="tag orange">401</span></td><td>Unauthorized</td><td>Missing function key (<code class="inline">?code=...</code>)</td></tr>
+    <tr><td><span class="tag orange">404</span></td><td>Not Found</td><td>Wrong route name in URL</td></tr>
+    <tr><td><span class="tag red">500</span></td><td>Server Error</td><td>Exception/crash inside the function</td></tr>
+  </table>
+</div>
+
+<!-- ==================== SECTION 6 ==================== -->
+<h2>6. DevTools (F12) — Network Tab</h2>
+<div class="box">
+  <p>Press <strong>F12</strong> → <strong>Network</strong> tab → check <strong>"Preserve log"</strong></p>
+  <p>Click Send Request → find <code class="inline">test_request_receiver</code> in the list → click it:</p>
+
+  <h3>Headers sub-tab</h3>
+  <pre>Request URL:    http://localhost:7071/api/test_request_receiver
+Request Method: POST
+Status Code:    200 OK
+
+Request Headers:
+  Content-Type: application/json</pre>
+
+  <h3>Payload sub-tab (most important)</h3>
+  <pre>{
+  "ActivityType": "Request",
+  "ActivityName": "POLICYEXEMPTION",
+  ...
+}</pre>
+  <div class="tip">This is <strong>exactly</strong> what was sent to the function. If this is empty or wrong → bug is in your JS <code class="inline">sendRequest()</code> function.</div>
+
+  <h3>Response sub-tab</h3>
+  <pre>Done. SnowItemId: </pre>
+  <p>This is what <code class="inline">func.HttpResponse(...)</code> returned from the function.</p>
+</div>
+
+<!-- ==================== SECTION 7 ==================== -->
+<h2>7. DevTools — Console Tab</h2>
+<div class="box">
+  <p>If <code class="inline">sendRequest()</code> crashes before <code class="inline">fetch()</code> runs, the request won't appear in Network at all.</p>
+  <p>Check Console tab for red errors:</p>
+  <pre style="color:#f44;">Uncaught TypeError: Cannot read properties of null   ← wrong element id
+SyntaxError: ...                                     ← bad JS syntax</pre>
+
+  <h3>CORS error looks like this:</h3>
+  <pre style="color:#f44;">Access to fetch at 'http://localhost:7071/...' from origin 'http://127.0.0.1:5500'
+has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header</pre>
+  <div class="warn">Fix: Add <code class="inline">"Host": { "CORS": "*" }</code> to <strong>local.settings.json</strong> and restart the function.</div>
+
+  <h3>Add this to inspect payload before sending:</h3>
+  <pre>// Add inside sendRequest() before the fetch() call
+console.log("Payload:", JSON.stringify(payload, null, 2));</pre>
+  <div class="tip">Check Console tab → you'll see exactly what is about to be sent.</div>
+</div>
+
+<!-- ==================== SECTION 8 ==================== -->
+<h2>8. Full Frontend → Backend Trace (Our System)</h2>
+<div class="box">
+  <pre>HTML form
+  → sendRequest() builds payload object
+    → JSON.stringify(payload) → sent as HTTP body
+      → function_app.py: req.get_json() → data dict
+        → RequestReceiver().request_initilize(data)
+          → snow_data() / activity_data() → DB insert + SNOW ticket
+            → Service Bus message published
+              → abi-mc-az-requesthandler receives message
+                → AzActivityClassifier.policyexemption_activity()
+                  → AzPolicyExemption.apply_exemption()
+                    → policy_client.policy_exemptions.create_or_update()
+                      → Azure Policy Exemption CREATED in Azure</pre>
+  <div class="tip">Add <code class="inline">logging.info()</code> at each step to trace exactly where data stops flowing correctly.</div>
+</div>
+
+<!-- ==================== SECTION 9 ==================== -->
+<h2>9. Quick Debugging Checklist</h2>
+<div class="box">
+  <table>
+    <tr><th>Symptom</th><th>Where to Look</th><th>Fix</th></tr>
+    <tr><td>Request not sent at all</td><td>Network tab — is it listed?</td><td>Check Console for JS errors</td></tr>
+    <tr><td>Body empty / wrong</td><td>Network → Payload tab</td><td>Fix <code class="inline">sendRequest()</code> JS logic</td></tr>
+    <tr><td>Wrong server response</td><td>Network → Response tab</td><td>Check function terminal logs</td></tr>
+    <tr><td>JS crash before fetch</td><td>Console tab → red errors</td><td>Fix JS error shown</td></tr>
+    <tr><td>CORS blocked</td><td>Console → "blocked by CORS policy"</td><td>Add CORS to local.settings.json</td></tr>
+    <tr><td>Status 500</td><td>Network → Status + function terminal</td><td>Read Python traceback in terminal</td></tr>
+    <tr><td><code class="inline">ValueError: no valid JSON</code></td><td>Function terminal</td><td>CORS preflight / missing Content-Type</td></tr>
+    <tr><td><code class="inline">KeyError: 'ActivityType'</code></td><td>Function terminal</td><td>Field name mismatch between HTML and function</td></tr>
+  </table>
+</div>
+
+<!-- ==================== SECTION 10 ==================== -->
+<h2>10. Key Terms</h2>
+<div class="box">
+  <table>
+    <tr><th>Term</th><th>Meaning</th></tr>
+    <tr><td><strong>Endpoint</strong></td><td>The URL the function listens on — <code class="inline">/api/test_request_receiver</code></td></tr>
+    <tr><td><strong>Route</strong></td><td>Same as endpoint — defined by <code class="inline">@app.route(route="...")</code></td></tr>
+    <tr><td><strong>Payload / Request Body</strong></td><td>The JSON data sent in the POST request</td></tr>
+    <tr><td><strong>CORS</strong></td><td>Browser security that blocks cross-origin requests unless server explicitly allows it</td></tr>
+    <tr><td><strong>Preflight</strong></td><td>Browser's automatic OPTIONS request sent before a cross-origin POST</td></tr>
+    <tr><td><strong>Auth Level ANONYMOUS</strong></td><td>No key needed to call the function — used for local testing</td></tr>
+    <tr><td><strong>Auth Level FUNCTION</strong></td><td>Requires <code class="inline">?code=...</code> key in the URL — used in production</td></tr>
+    <tr><td><strong>Content-Type</strong></td><td>Header that tells the server what format the body is in</td></tr>
+    <tr><td><strong>Status Code</strong></td><td>Number the server returns to indicate success (200) or failure (4xx/5xx)</td></tr>
+    <tr><td><strong>Live Server</strong></td><td>VS Code extension that serves HTML at <code class="inline">http://127.0.0.1:5500</code> — avoids file:// CORS issues</td></tr>
+  </table>
+</div>
+
+<br><br>
+<p style="color:#888; font-size:12px;">Generated: 2026-07-30 | ABI Cloud Management — Developer Reference</p>
+
+</body>
+</html>

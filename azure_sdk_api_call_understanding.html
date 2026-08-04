@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AzPolicyStates — Code Reference</title>
+    <style>
+        body { font-family: Segoe UI, Arial, sans-serif; margin: 40px; background: #f4f6f9; color: #222; }
+        h1 { color: #0078d4; border-bottom: 3px solid #0078d4; padding-bottom: 10px; }
+        h2 { color: #005a9e; margin-top: 40px; border-left: 4px solid #0078d4; padding-left: 12px; }
+        h3 { color: #333; margin-top: 20px; }
+        .card { background: #fff; border-radius: 8px; padding: 20px 28px; margin: 20px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+        .comment { color: #6a9955; }
+        .keyword { color: #569cd6; }
+        .string { color: #ce9178; }
+        .highlight { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px; border-radius: 4px; margin: 12px 0; }
+        .success { background: #d4edda; border-left: 4px solid #28a745; padding: 12px 16px; border-radius: 4px; margin: 12px 0; }
+        .info { background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 12px 16px; border-radius: 4px; margin: 12px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+        th { background: #0078d4; color: white; padding: 10px 14px; text-align: left; }
+        td { padding: 10px 14px; border-bottom: 1px solid #dee2e6; }
+        tr:nth-child(even) { background: #f8f9fa; }
+        .flow { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+        .flow-step { background: #e7f3ff; border: 1px solid #b3d4f5; border-radius: 6px; padding: 10px 16px; }
+        .flow-arrow { text-align: center; font-size: 20px; color: #0078d4; }
+        code { background: #eef0f2; padding: 2px 6px; border-radius: 3px; font-family: Consolas, monospace; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+<h1>AzPolicyStates — Code Reference Guide</h1>
+<p><strong>Files covered:</strong> <code>shared_code/policy_insights_client.py</code> &nbsp;|&nbsp; <code>AzPolicyStates/policy_test.py</code></p>
+
+<!-- ============================================================ -->
+<h2>1. File Structure & Responsibilities</h2>
+<div class="card">
+    <table>
+        <tr>
+            <th>File</th>
+            <th>Job</th>
+            <th>What it does</th>
+        </tr>
+        <tr>
+            <td><code>shared_code/policy_insights_client.py</code></td>
+            <td>Client Setup</td>
+            <td>Creates and returns a <code>PolicyInsightsClient</code> object (authentication + connection)</td>
+        </tr>
+        <tr>
+            <td><code>AzPolicyStates/policy_test.py</code></td>
+            <td>Business Logic</td>
+            <td>Fetches policy states from all subscriptions, normalizes data, saves to DB</td>
+        </tr>
+        <tr>
+            <td><code>shared_code/subscriptions_client.py</code></td>
+            <td>Subscription List</td>
+            <td>Returns list of all enabled Azure subscriptions</td>
+        </tr>
+        <tr>
+            <td><code>shared_code/client_secret_auth.py</code></td>
+            <td>Authentication</td>
+            <td>Fetches SPN credentials from Key Vault and returns <code>ClientSecretCredential</code></td>
+        </tr>
+    </table>
+    <div class="success">
+        <strong>Design Pattern:</strong> Each file has ONE job. This follows the same pattern as <code>authorization_client.py</code>, <code>subscriptions_client.py</code>, and <code>resourcegraph_client.py</code> in the repo.
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>2. Why policy_insights_client.py was Created Separately</h2>
+<div class="card">
+    <h3>Repo pattern — every SDK client has its own shared_code file:</h3>
+    <table>
+        <tr>
+            <th>Shared Code File</th>
+            <th>Wraps This SDK Client</th>
+        </tr>
+        <tr>
+            <td><code>subscriptions_client.py</code></td>
+            <td><code>SubscriptionClient</code></td>
+        </tr>
+        <tr>
+            <td><code>authorization_client.py</code></td>
+            <td><code>AuthorizationManagementClient</code></td>
+        </tr>
+        <tr>
+            <td><code>resourcegraph_client.py</code></td>
+            <td><code>ResourceGraphClient</code></td>
+        </tr>
+        <tr style="background:#e7f3ff; font-weight:bold;">
+            <td><code>policy_insights_client.py</code> ← NEW</td>
+            <td><code>PolicyInsightsClient</code></td>
+        </tr>
+    </table>
+    <div class="highlight">
+        <strong>Extra improvement:</strong> <code>policy_insights_client.py</code> uses <code>ClientSecretAuth().client_credential()</code>
+        (1 line) instead of manually calling <code>SpnToken → ClientSecretCredential</code> (3 lines) like older files do.
+        This is the cleaner, correct approach using the abstraction already built in shared_code.
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>3. Client Initialization vs API Call</h2>
+<div class="card">
+    <table>
+        <tr>
+            <th>Code</th>
+            <th>Type</th>
+            <th>HTTP Request Sent?</th>
+            <th>What happens</th>
+        </tr>
+        <tr>
+            <td><code>PolicyInsightsClient(credential, subscription_id)</code></td>
+            <td>Client Initialization</td>
+            <td>❌ No</td>
+            <td>Stores credential + subscription_id internally. Prepares connection object.</td>
+        </tr>
+        <tr>
+            <td><code>client.policy_states.list_query_results_for_subscription(...)</code></td>
+            <td>API Call</td>
+            <td>✅ Yes</td>
+            <td>Sends HTTP POST to Azure. Returns actual policy state data.</td>
+        </tr>
+    </table>
+
+    <h3>Simple Class Analogy:</h3>
+    <pre><span class="comment"># Simple class — same concept</span>
+<span class="keyword">class</span> DatabaseConnection:
+    <span class="keyword">def</span> __init__(self, username, password):
+        self.username = username   <span class="comment"># just stores — no work done</span>
+        self.password = password
+
+    <span class="keyword">def</span> get_users(self):
+        <span class="keyword">return</span> <span class="string">"fetching users..."</span>  <span class="comment"># actual work happens here</span>
+
+<span class="comment"># Step 1 — object created (no work)</span>
+db = DatabaseConnection(<span class="string">"admin"</span>, <span class="string">"pass123"</span>)
+
+<span class="comment"># Step 2 — actual work</span>
+result = db.get_users()
+
+<span class="comment"># ─────────────────────────────────────────────────</span>
+<span class="comment"># Your code follows EXACTLY the same pattern:</span>
+
+<span class="comment"># Step 1 — client created (no API call)</span>
+client = PolicyInsightsClient(credential, subscription_id)
+
+<span class="comment"># Step 2 — actual API call</span>
+records = client.policy_states.list_query_results_for_subscription(...)</pre>
+
+    <h3>Parameter Mapping — Your Code vs Simple Example:</h3>
+    <table>
+        <tr>
+            <th>YOUR CODE</th>
+            <th></th>
+            <th>SIMPLE EXAMPLE EQUIVALENT</th>
+        </tr>
+        <tr>
+            <td><code>PolicyInsightsClient(</code></td>
+            <td style="text-align:center;">←→</td>
+            <td><code>DatabaseConnection(</code></td>
+        </tr>
+        <tr>
+            <td>&nbsp;&nbsp;&nbsp;&nbsp;<code>credential,</code></td>
+            <td style="text-align:center;">←→</td>
+            <td>&nbsp;&nbsp;&nbsp;&nbsp;<code>username,</code></td>
+        </tr>
+        <tr>
+            <td>&nbsp;&nbsp;&nbsp;&nbsp;<code>subscription_id</code></td>
+            <td style="text-align:center;">←→</td>
+            <td>&nbsp;&nbsp;&nbsp;&nbsp;<code>password</code></td>
+        </tr>
+        <tr>
+            <td><code>)</code></td>
+            <td style="text-align:center;">←→</td>
+            <td><code>)</code></td>
+        </tr>
+    </table>
+    <div class="highlight"><strong>Both just STORE the details. No work done yet.</strong></div>
+
+    <h3>Method Mapping — Your Code vs Simple Example:</h3>
+    <table>
+        <tr>
+            <th>YOUR CODE</th>
+            <th></th>
+            <th>SIMPLE EXAMPLE EQUIVALENT</th>
+        </tr>
+        <tr>
+            <td><code>client.policy_states.list_query_results_for_subscription()</code></td>
+            <td style="text-align:center;">←→</td>
+            <td><code>db.get_users()</code></td>
+        </tr>
+    </table>
+    <div class="highlight"><strong>Both actually DO the work here.</strong></div>
+
+    <h3>Side-by-side Code Comparison:</h3>
+    <pre><span class="comment"># Simple class</span>
+db     = DatabaseConnection(<span class="string">"admin"</span>, <span class="string">"pass123"</span>)   <span class="comment"># object created</span>
+result = db.get_users()                            <span class="comment"># actual work</span>
+
+<span class="comment"># Your code</span>
+client  = PolicyInsightsClient(credential, sub_id)                         <span class="comment"># object created</span>
+records = client.policy_states.list_query_results_for_subscription(...)    <span class="comment"># actual work</span></pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>4. Why subscription_id is Passed to PolicyInsightsClient</h2>
+<div class="card">
+    <div class="info">
+        <strong>subscription_id is NOT for authentication.</strong> It is used to build the Azure REST API URL.
+    </div>
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>Purpose</th>
+            <th>Analogy</th>
+        </tr>
+        <tr>
+            <td><code>credential</code></td>
+            <td>Authentication — WHO are you?</td>
+            <td>Your ID card / passport</td>
+        </tr>
+        <tr>
+            <td><code>subscription_id</code></td>
+            <td>Routing — WHERE to send the request?</td>
+            <td>The destination address</td>
+        </tr>
+    </table>
+
+    <h3>API URL that gets constructed internally:</h3>
+    <pre>https://management.azure.com
+    /subscriptions/<span style="color:#ce9178;">{subscription_id}</span>    ← subscription_id used here
+    /providers/Microsoft.PolicyInsights
+    /policyStates/latest/queryResults</pre>
+
+    <h3>Why SubscriptionClient does NOT need subscription_id:</h3>
+    <pre><span class="comment"># SubscriptionClient — LISTS all subscriptions (tenant level)</span>
+<span class="comment"># URL: GET https://management.azure.com/subscriptions</span>
+SubscriptionClient(credentials)   <span class="comment"># no subscription_id needed</span>
+
+<span class="comment"># PolicyInsightsClient — queries ONE subscription at a time</span>
+<span class="comment"># URL: POST https://management.azure.com/subscriptions/{sub_id}/...</span>
+PolicyInsightsClient(credential, subscription_id)   <span class="comment"># subscription_id required</span></pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>5. Does it Query All Subscriptions? (subscriptions[0] Doubt)</h2>
+<div class="card">
+    <div class="success">
+        <strong>Yes — all subscriptions are queried.</strong> <code>subscriptions[0]</code> is only a placeholder to satisfy the SDK constructor. The loop overrides it.
+    </div>
+    <pre><span class="comment"># Client created with subscriptions[0] as default</span>
+client = PolicyInsightsClientFactory().get_policy_client(azenvironment, subscriptions[<span style="color:#b5cea8;">0</span>])
+
+<span class="comment"># Loop iterates ALL subscriptions</span>
+<span class="keyword">for</span> idx, sub_id <span class="keyword">in</span> enumerate(subscriptions, <span style="color:#b5cea8;">1</span>):
+    records = client.policy_states.list_query_results_for_subscription(
+        policy_states_resource=<span class="string">"latest"</span>,
+        subscription_id=sub_id   <span class="comment"># ← explicitly overrides constructor default each time</span>
+    )</pre>
+    <table>
+        <tr>
+            <th>Constructor call</th>
+            <th>Loop iteration 1</th>
+            <th>Loop iteration 2</th>
+            <th>Loop iteration 3</th>
+        </tr>
+        <tr>
+            <td><code>subscriptions[0]</code> (default)</td>
+            <td>sub-AAA (explicit)</td>
+            <td>sub-BBB (explicit)</td>
+            <td>sub-CCC (explicit)</td>
+        </tr>
+    </table>
+</div>
+
+<!-- ============================================================ -->
+<h2>6. SPN Access — Why There's No Permission Issue</h2>
+<div class="card">
+    <div class="flow">
+        <div class="flow-step"><strong>_get_subscriptions()</strong> — uses <code>"az-public-spn-reader"</code> SPN → returns only subscriptions this SPN can access</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step"><strong>PolicyInsightsClientFactory().get_policy_client()</strong> — uses same <code>"az-public-spn-reader"</code> SPN</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step"><strong>Loop</strong> — queries each subscription the SPN already proved it can access</div>
+    </div>
+    <div class="success">
+        Same SPN is used throughout. If the SPN can list a subscription, it can query its policy states. Zero permission risk.
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>7. Complete Flow — End to End</h2>
+<div class="card">
+    <pre><span class="comment">── get_policy_states() called ──────────────────────────────────────</span>
+  calls policy_states_api("AzurePublicCloud")
+  calls policy_states_api("AzureChinaCloud")
+  combines results → saves to DB
+
+<span class="comment">── policy_states_api(azenvironment) ────────────────────────────────</span>
+  Step 1: _get_subscriptions()
+          └── SubscriptionsClient().get_subscription_client(azenvironment)
+          └── Lists all ENABLED subscriptions using "az-public-spn-reader"
+          └── Returns: ["sub-001", "sub-002", "sub-003", ...]
+
+  Step 2: PolicyInsightsClientFactory().get_policy_client(azenvironment, subscriptions[0])
+          └── Picks spn_secret_name based on environment
+          └── ClientSecretAuth().client_credential(spn_secret_name)
+              └── Fetches SPN details from Key Vault
+              └── Returns ClientSecretCredential
+          └── Returns PolicyInsightsClient(credential, subscriptions[0])
+              └── No API call yet — just object prepared
+
+  Step 3: Loop over all subscriptions
+          └── For each sub_id:
+              └── client.policy_states.list_query_results_for_subscription(
+                      policy_states_resource="latest",
+                      subscription_id=sub_id    ← actual API call here
+                  )
+              └── Retry 3 times on failure (exponential backoff)
+              └── Collect all records
+
+  Step 4: _normalize_results()
+          └── Converts snake_case SDK response → camelCase schema
+          └── Returns list of normalized dicts</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>8. Breakdown of the Actual API Call Line</h2>
+<div class="card">
+    <pre>records = client.policy_states.list_query_results_for_subscription(
+    policy_states_resource=<span style="color:#ce9178;">"latest"</span>,
+    subscription_id=sub_id
+)</pre>
+
+    <h3>What each part does:</h3>
+    <table>
+        <tr>
+            <th>Part</th>
+            <th>What it is</th>
+        </tr>
+        <tr>
+            <td><code>client</code></td>
+            <td>The <code>PolicyInsightsClient</code> object created in <code>policy_insights_client.py</code></td>
+        </tr>
+        <tr>
+            <td><code>.policy_states</code></td>
+            <td>The module inside the SDK that handles policy state operations</td>
+        </tr>
+        <tr>
+            <td><code>.list_query_results_for_subscription(...)</code></td>
+            <td>The actual API method that makes the HTTP call</td>
+        </tr>
+        <tr>
+            <td><code>policy_states_resource="latest"</code></td>
+            <td>Tells Azure: give me the <strong>latest</strong> policy states (not historical)</td>
+        </tr>
+        <tr>
+            <td><code>subscription_id=sub_id</code></td>
+            <td>The subscription to query — changes in each loop iteration</td>
+        </tr>
+    </table>
+
+    <h3>The full picture — which file does what:</h3>
+    <pre>policy_insights_client.py
+└── Creates the "client" object (authentication + connection setup)
+
+policy_test.py
+└── Uses the "client" to make the actual API call:
+    client.policy_states.list_query_results_for_subscription(...)
+                │
+                ▼
+    Azure REST API:
+    POST https://management.azure.com
+         /subscriptions/{sub_id}
+         /providers/Microsoft.PolicyInsights
+         /policyStates/latest/queryResults</pre>
+
+    <div class="info">
+        <strong>Summary:</strong> <code>policy_insights_client.py</code> = sets up the connection &nbsp;|&nbsp; <code>policy_test.py</code> = makes the actual API call
+    </div>
+</div>
+
+<hr style="margin-top:40px;">
+<p style="color:#888; font-size:12px;">Generated for team reference — AzPolicyStates module | abi_multicloudsync repo</p>
+
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INACTIVERBAC Request Flow Documentation</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<style>
+  :root { --bg: #f8f9fa; --card: #fff; --border: #dee2e6; --text: #212529; --muted: #6c757d; --accent: #0d6efd; --code-bg: #f1f3f5; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; max-width: 1100px; margin: auto; }
+  h1 { font-size: 1.8rem; margin-bottom: .5rem; }
+  h2 { font-size: 1.35rem; margin: 2rem 0 .75rem; border-bottom: 2px solid var(--accent); padding-bottom: .35rem; }
+  h3 { font-size: 1.1rem; margin: 1.25rem 0 .5rem; color: var(--accent); }
+  .subtitle { color: var(--muted); margin-bottom: 2rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .step-num { display: inline-block; background: var(--accent); color: #fff; border-radius: 50%; width: 28px; height: 28px; text-align: center; line-height: 28px; font-weight: 700; font-size: .85rem; margin-right: .5rem; }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: .9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; font-size: .85rem; margin: .75rem 0; }
+  ul, ol { margin-left: 1.5rem; margin-bottom: .75rem; }
+  li { margin-bottom: .35rem; }
+  .file-ref { color: var(--accent); font-weight: 500; }
+  .mermaid { text-align: center; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; margin: .75rem 0; }
+  th, td { border: 1px solid var(--border); padding: .5rem .75rem; text-align: left; font-size: .9rem; }
+  th { background: var(--code-bg); }
+  .arrow { color: var(--accent); font-weight: bold; }
+  @media print { body { padding: .5rem; } .card { break-inside: avoid; } }
+</style>
+</head>
+<body>
+
+<h1>INACTIVERBAC — Full Request Flow</h1>
+<p class="subtitle">From <code>request_initilize(data)</code> to ServiceNow ticket creation &amp; DB insert</p>
+
+<!-- ───────── OVERVIEW DIAGRAM ───────── -->
+<h2>End-to-End Sequence</h2>
+<div class="card">
+<div class="mermaid">
+sequenceDiagram
+    participant Caller
+    participant RR as RequestReceiver
+    participant AZ as AzActivityNames
+    participant Cat as AzInactiveRbac
+    participant Snow as SnowRequest
+    participant API as ServiceNow API
+    participant DB as SQL DB (tblEventMaster)
+
+    Caller->>RR: request_initilize(data)
+    RR->>AZ: get_activity_type_data(data)
+    AZ->>Cat: snow_data(data)
+    Note over Cat: Build description, short_description,<br/>business_service, variables
+    Cat-->>AZ: enriched data
+    AZ-->>RR: activity_type_data
+    RR->>Snow: create(activity_type_data)
+    Snow->>API: get_user_details_by_email()
+    Snow->>API: create_request(request_data)
+    API-->>Snow: RITM + REQ numbers
+    Snow->>API: upload_attachment_json()
+    Snow-->>RR: data with SNOW IDs
+    Note over RR: self.status = 'Pending Approval'
+    RR->>DB: MERGE INTO tblEventMaster
+    DB-->>RR: EventId
+    RR-->>Caller: SnowItemId (RITM number)
+</div>
+</div>
+
+<!-- ───────── STEP 1 ───────── -->
+<h2><span class="step-num">1</span> Entry Point — <code>request_initilize(data)</code></h2>
+<div class="card">
+<p><span class="file-ref">RequestReceiver/RequestReceiver.py</span></p>
+<pre>now_tkt = await request_receiver_obj.request_initilize(data)</pre>
+<p>The first <code>match</code> dispatches on <code>data['payload']['cloud']</code>. For Azure:</p>
+<pre>activity_type_data = await AzActivityNames().get_activity_type_data(data)</pre>
+</div>
+
+<!-- ───────── STEP 2 ───────── -->
+<h2><span class="step-num">2</span> Activity Routing — <code>AzActivityNames.get_activity_type_data()</code></h2>
+<div class="card">
+<p><span class="file-ref">RequestReceiver/ActivityNames/AzActivityNames.py</span></p>
+<p>Matches <code>data["ActivityName"]</code>. For <code>"INACTIVERBAC"</code>:</p>
+<pre>self.request_data = AzInactiveRbac().snow_data(data)</pre>
+<p>Returns the enriched data dict as <code>activity_type_data</code>.</p>
+</div>
+
+<!-- ───────── STEP 3 ───────── -->
+<h2><span class="step-num">3</span> Catalog Data Preparation — <code>AzInactiveRbac.snow_data(data)</code></h2>
+<div class="card">
+<p><span class="file-ref">Catalog/Azure/InactiveRbac/InactiveRbac.py</span></p>
+
+<h3>3a. Constructor</h3>
+<table>
+  <tr><th>Attribute</th><th>Type</th><th>Used In</th></tr>
+  <tr><td><code>self.objdb</code></td><td>DB()</td><td><code>activity_data()</code> (later pipeline stage)</td></tr>
+  <tr><td><code>self.objactivitymgr</code></td><td>DbActivityManager()</td><td><code>activity_data()</code></td></tr>
+  <tr><td><code>self.objsnow</code></td><td>SNOWClient()</td><td>Not used in <code>snow_data()</code></td></tr>
+</table>
+<p><em>None of these are used inside <code>snow_data()</code> itself — they exist for the <code>activity_data()</code> method which runs later.</em></p>
+
+<h3>3b. Build <code>description</code></h3>
+<ul>
+  <li>Iterates <code>data['payload']['inactive_user_details']</code></li>
+  <li>Separates into <strong>deleted users</strong> (<code>user_status == 'Deleted User'</code>) and <strong>inactive users</strong></li>
+  <li>Produces a human-readable description listing scopes per user</li>
+</ul>
+
+<h3>3c. Build <code>short_description</code></h3>
+<pre>ABI Cloud Management Portal - Azure - {cleanup_type} - RequestorEmail: {email} - inactive_users: user1, user2... - deleted_users: 3</pre>
+<p>Where <code>cleanup_type</code> is one of: <em>Inactive RBAC Cleanup</em>, <em>Deleted RBAC Cleanup</em>, or <em>Inactive &amp; Deleted RBAC Cleanup</em>.</p>
+
+<h3>3d. Add ServiceNow fields</h3>
+<pre>self.request_data.update({
+    "business_service": "41b9ca581ba250d04a803150cd4bcbbe",
+    "variables": {
+        "catalog_name": "Inactive RBAC Cleanup",
+        "category": "Access Management",
+        "catalog_description": "Remove RBAC assignments for inactive users in Azure",
+        "zone": data.get("zone", ""),
+        "tenant": data["payload"].get("tenant", ""),
+        "inactive_user_details": str(...),
+        "inactive_users": "user1,user2,..."
+    }
+})</pre>
+
+<p><strong>Returns</strong>: the mutated <code>data</code> dict with <code>description</code>, <code>short_description</code>, <code>business_service</code>, and <code>variables</code> added.</p>
+</div>
+
+<!-- ───────── STEP 4 ───────── -->
+<h2><span class="step-num">4</span> ActivityType Routing — Back in <code>request_initilize</code></h2>
+<div class="card">
+<p><span class="file-ref">RequestReceiver/RequestReceiver.py</span></p>
+<p>The second <code>match</code> dispatches on <code>data["ActivityType"]</code>. For <code>'Request'</code>:</p>
+<pre>self.data = SnowRequest().create(activity_type_data)
+self.status = 'Pending Approval'</pre>
+</div>
+
+<!-- ───────── STEP 5 ───────── -->
+<h2><span class="step-num">5</span> ServiceNow Ticket Creation — <code>SnowRequest.create()</code></h2>
+<div class="card">
+<p><span class="file-ref">ServiceNow/SnowRequest.py</span></p>
+
+<h3>5a. Requestor Lookup (fallback chain)</h3>
+<ol>
+  <li><code>get_user_details_by_email(data['RequestorEmail'])</code></li>
+  <li>If not found → <code>get_user_details_by_oid(data['OID'])</code></li>
+  <li>If not found → <code>get_user_details_by_sys_id(data['OID'])</code></li>
+</ol>
+
+<h3>5b. Build Base Payload</h3>
+<pre>request_data = {
+    "sysparm_quantity": 1,
+    "variables": {
+        "u_requester": requestor['sys_id'],
+        "u_employee_email": requestor['email'],
+        "u_employee_zone": requestor['u_preferred_zone'],
+        "zone": "GHQ" if zone in ["BREWDAT","AURORA","TECHOPS","BEES"] else zone,
+        "u_on_behalf_of": requestor['sys_id'],
+        "u_phone_number": requestor['mobile_phone']
+    }
+}</pre>
+
+<h3>5c. Merge Catalog Fields from <code>snow_data()</code></h3>
+<pre>request_data['description'] = data['description']
+request_data['short_description'] = data['short_description']
+request_data['variables'].update(data['variables'])
+// → merges catalog_name, category, zone, tenant, inactive_user_details, inactive_users</pre>
+
+<h3>5d. Set Default Assignment Group</h3>
+<pre>if request_data.get('assignment_group') is None:
+    request_data['assignment_group'] = Constants.SNOW_ASSIGNMENT_GROUP</pre>
+
+<h3>5e. Create Ticket via ServiceNow API</h3>
+<p><span class="file-ref">shared_code/snow_client.py → create_request()</span></p>
+<ol>
+  <li>POSTs to <code>/api/sn_sc/servicecatalog/items/.../order_now?assignment_group=...</code></li>
+  <li>Gets RITM via <code>get_ritm_status_by_request()</code></li>
+  <li>Updates RITM fields (<code>short_description</code>, <code>description</code>, <code>assignment_group</code>) via <code>GlideRecord.update()</code></li>
+  <li>Returns serialized RITM + parent Request</li>
+</ol>
+
+<h3>5f. Upload Attachment &amp; Set SNOW IDs</h3>
+<pre>self.objsnow.upload_attachment_json(snow_ritm['number'], data)
+data['SnowId']             = snow_req['number']       // e.g. REQ0012345
+data['SnowItemId']         = snow_ritm['number']      // e.g. RITM0012345
+data['SnowStatusCode']     = snow_req['state']
+data['SnowItemStatusCode'] = snow_ritm['state']
+data['SnowStatus']         = snow_req['stage']
+data['SnowItemStatus']     = snow_ritm['stage']</pre>
+<p><strong>Returns</strong>: the <code>data</code> dict now enriched with all ServiceNow identifiers.</p>
+</div>
+
+<!-- ───────── STEP 6 ───────── -->
+<h2><span class="step-num">6</span> Database Insert — <code>event_db_insert(self.data)</code></h2>
+<div class="card">
+<p><span class="file-ref">RequestReceiver/RequestReceiver.py</span></p>
+<p>Executes <code>MERGE INTO tblEventMaster</code>:</p>
+<table>
+  <tr><th>Column</th><th>Value Source</th></tr>
+  <tr><td>MessageId</td><td><code>data['message_id']</code></td></tr>
+  <tr><td>ActivityName</td><td><code>data['ActivityName']</code> → "INACTIVERBAC"</td></tr>
+  <tr><td>ActivityType</td><td><code>data['ActivityType']</code> → "Request"</td></tr>
+  <tr><td>SnowId</td><td><code>data['SnowId']</code> → REQ number</td></tr>
+  <tr><td>SnowItemId</td><td><code>data['SnowItemId']</code> → RITM number</td></tr>
+  <tr><td>SnowItemStatusCode</td><td><code>data['SnowItemStatusCode']</code></td></tr>
+  <tr><td>SnowItemStatus</td><td><code>data['SnowItemStatus']</code></td></tr>
+  <tr><td>RequestedBy</td><td><code>data['RequestorEmail']</code></td></tr>
+  <tr><td>Cloud</td><td><code>data['payload']['cloud']</code> → "Azure"</td></tr>
+  <tr><td>Zone</td><td><code>data['zone']</code></td></tr>
+  <tr><td>Payload</td><td><code>json.dumps(data['payload'])</code></td></tr>
+  <tr><td>LastUpdateTime</td><td><code>datetime.now(UTC)</code></td></tr>
+  <tr><td>Status</td><td><code>'Pending Approval'</code></td></tr>
+</table>
+<p>Match condition: <code>MessageId + ActivityName + ActivityType + Status</code> must not already exist (dedup).</p>
+<p>Returns <code>EventId</code> via <code>OUTPUT inserted.EventId</code>.</p>
+</div>
+
+<!-- ───────── STEP 7 ───────── -->
+<h2><span class="step-num">7</span> Return Value</h2>
+<div class="card">
+<pre>return self.data["SnowItemId"]   // → RITM number returned as now_tkt</pre>
+</div>
+
+<!-- ───────── CONNECTION DIAGRAM ───────── -->
+<h2>Data Enrichment Flow</h2>
+<div class="card">
+<div class="mermaid">
+flowchart TD
+    A["AzInactiveRbac.snow_data(data)"] -->|"adds description,\nshort_description,\nbusiness_service,\nvariables"| B["activity_type_data\n(enriched dict)"]
+    B --> C["SnowRequest.create(activity_type_data)"]
+    C --> D["Lookup requestor in SNOW"]
+    D --> E["Build request_data with\nrequester details"]
+    E --> F["Merge description +\nshort_description +\nvariables from snow_data()"]
+    F --> G["Set default assignment_group"]
+    G --> H["POST to ServiceNow API\n→ creates RITM + REQ"]
+    H --> I["Upload JSON attachment"]
+    I --> J["Set SnowId, SnowItemId,\nstatus codes on data"]
+    J --> K["Return enriched data\nas self.data"]
+    K --> L["event_db_insert(self.data)\n→ MERGE INTO tblEventMaster"]
+    L --> M["Return SnowItemId"]
+</div>
+</div>
+
+<hr style="margin:2rem 0">
+<p style="color:var(--muted);font-size:.85rem;text-align:center;">Generated on 2026-07-27 &bull; INACTIVERBAC Request Flow &bull; abi-mc-az-requesthandler</p>
+
+<script>mermaid.initialize({startOnLoad:true, theme:'default'});</script>
+</body>
+</html>

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Principal Reference - abi-iam-xtractor</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+            line-height: 1.6;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #1a1a2e;
+            border-bottom: 3px solid #0078d4;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #0078d4;
+            margin-top: 40px;
+            border-left: 4px solid #0078d4;
+            padding-left: 12px;
+        }
+        h3 {
+            color: #444;
+        }
+        .qa-block {
+            background: #fff;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .question {
+            background: #e8f4fd;
+            border-left: 4px solid #0078d4;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            border-radius: 0 4px 4px 0;
+            font-weight: 600;
+        }
+        .answer {
+            padding: 0 16px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #0078d4;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        code {
+            background: #e8e8e8;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 13px;
+        }
+        pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+        .file-link {
+            color: #0078d4;
+            text-decoration: none;
+            font-family: 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+        .note {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px 16px;
+            margin: 12px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .flow-diagram {
+            background: #f0f7ff;
+            border: 1px solid #b3d9ff;
+            padding: 16px;
+            border-radius: 6px;
+            font-family: 'Consolas', monospace;
+            white-space: pre;
+            margin: 12px 0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Service Principal Reference - abi-iam-xtractor</h1>
+<p><em>Generated from chat session on 2026-07-15</em></p>
+
+<!-- Q&A 1 -->
+<div class="qa-block">
+    <div class="question">Q: Here service principal means. How it is used, where to check. So refer other files if required.</div>
+    <div class="answer">
+
+        <h2>What is a Service Principal?</h2>
+        <p>A <strong>Service Principal</strong> (SPN) is an identity in Azure Active Directory (Entra ID) that an application uses to authenticate and access Azure resources — essentially an "app identity" (as opposed to a user identity). It has a <code>client_id</code>, <code>client_secret</code>, and <code>tenant_id</code>.</p>
+
+        <h2>How it's used in this project</h2>
+        <p>This project uses SPNs in <strong>two ways</strong>:</p>
+
+        <h3>1. As authentication credentials (to run the app itself)</h3>
+        <p>The app authenticates to Azure APIs using SPN credentials stored in Azure Key Vault:</p>
+
+        <table>
+            <tr><th>Flow</th><th>Files</th></tr>
+            <tr><td>Fetch secret from Key Vault</td><td><span class="file-link">shared_code/akv_secrets.py</span></td></tr>
+            <tr><td>Parse SPN JSON (client_id, secret, tenant)</td><td><span class="file-link">shared_code/spn_token.py</span></td></tr>
+            <tr><td>Create <code>ClientSecretCredential</code></td><td><span class="file-link">shared_code/client_secret_auth.py</span></td></tr>
+            <tr><td>Use credential to call Microsoft Graph API</td><td><span class="file-link">shared_code/graphservice_client.py</span></td></tr>
+            <tr><td>Use credential for Azure RBAC/Management</td><td><span class="file-link">shared_code/authorization_client.py</span></td></tr>
+        </table>
+
+        <p><strong>The chain works like this:</strong></p>
+        <div class="flow-diagram">Azure Key Vault secret (e.g. "az-public-spn-reader")
+    → JSON: {"client_id": "...", "secret": "...", "tenant": "..."}
+        → ClientSecretCredential(client_id, secret, tenant)
+            → Authenticated API client (Graph, ARM, etc.)</div>
+
+        <p>Key Vault secret names used:</p>
+        <ul>
+            <li><code>az-public-spn-reader</code> — for Azure Public Cloud Graph API</li>
+            <li><code>az-china-spn-reader</code> — for Azure China Cloud Graph API</li>
+            <li><code>az-public-spn-cloudbolt</code> — for Azure authorization/RBAC operations</li>
+        </ul>
+
+        <h3>2. As data being extracted (the app inventories SPNs)</h3>
+        <p>The app also <strong>extracts information about all SPNs</strong> in the tenant for IAM governance:</p>
+
+        <table>
+            <tr><th>Purpose</th><th>File</th></tr>
+            <tr><td>Extract all app registrations/SPNs (owners, keys, secrets, permissions)</td><td><span class="file-link">AzSPNs/spns.py</span></td></tr>
+            <tr><td>Extract SPN sign-in activity logs</td><td><span class="file-link">AzIdentityGovernance/spn_signin_logs.py</span></td></tr>
+            <tr><td>Notify SPN owners about expiring secrets</td><td><span class="file-link">NotifySPNOwners/notify_spn_owners.py</span></td></tr>
+        </table>
+
+        <h2>Where to check / key locations</h2>
+        <ul>
+            <li><strong>To see how authentication works:</strong> Start at <span class="file-link">shared_code/spn_token.py</span> → it fetches the SPN secret from Key Vault and returns a dict with <code>client_id</code>, <code>secret</code>, <code>tenant</code>.</li>
+            <li><strong>To see which SPNs are configured:</strong> Check Key Vault secrets referenced in <span class="file-link">shared_code/graphservice_client.py</span> and <span class="file-link">shared_code/authorization_client.py</span>.</li>
+            <li><strong>To see SPN data extraction logic:</strong> Look at <span class="file-link">AzSPNs/spns.py</span> — it pulls app registrations from Microsoft Graph including owners, key credentials, password credentials, permissions, etc.</li>
+            <li><strong>Runtime config:</strong> The Key Vault URI comes from the environment variable <code>KEYVAULT_URI</code> (set in <span class="file-link">local.settings.json</span> for local dev).</li>
+        </ul>
+
+        <h2>Summary</h2>
+        <p>In short: this Azure Function app <strong>uses</strong> a service principal to authenticate itself, and <strong>extracts data about</strong> all service principals in the organization for IAM reporting and governance (expiring secrets notifications, sign-in activity tracking, etc.).</p>
+    </div>
+</div>
+
+<!-- Q&A 2 -->
+<div class="qa-block">
+    <div class="question">Q: Here what all service principals used</div>
+    <div class="answer">
+
+        <p>Here are <strong>all the service principals</strong> (Key Vault secret names) used in this codebase:</p>
+
+        <table>
+            <tr><th>#</th><th>Key Vault Secret Name</th><th>Purpose</th><th>Used In</th></tr>
+            <tr>
+                <td>1</td>
+                <td><code>az-public-spn-reader</code></td>
+                <td>Read Azure Public Cloud (Graph API, Resource Graph, Subscriptions)</td>
+                <td>graphservice_client.py, graphservice_client_beta.py, resourcegraph_client.py, subscriptions_client.py</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td><code>az-china-spn-reader</code></td>
+                <td>Read Azure China Cloud (Graph, Resource Graph, Subscriptions, RBAC)</td>
+                <td>graphservice_client.py, graphservice_client_beta.py, resourcegraph_client.py, subscriptions_client.py, authorization_client.py</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td><code>az-public-spn-cloudbolt</code></td>
+                <td>Azure Public Cloud RBAC/Authorization management</td>
+                <td>authorization_client.py</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td><code>az-public-spn-saviynt-xtractor</code></td>
+                <td>Saviynt MICS data extraction</td>
+                <td>saviynt_mics.py</td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td><code>smtp-brewmation-cred</code></td>
+                <td>Send email notifications (via Microsoft Graph mail API)</td>
+                <td>notify_iam.py, notify_keyvault.py, notify_keyvault_certificates.py, notify_keyvault_keys.py, notify_keyvault_unified_owners.py</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td><code>beyondtrust-key</code></td>
+                <td>BeyondTrust API authentication (auth key)</td>
+                <td>BeyondTrustAccounts.py</td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td><code>beyondtrust-password</code></td>
+                <td>BeyondTrust API authentication (password)</td>
+                <td>BeyondTrustAccounts.py</td>
+            </tr>
+        </table>
+
+        <p><strong>Total: 7 distinct service principal / credential secrets</strong>, all stored in Azure Key Vault (referenced via the <code>KEYVAULT_URI</code> environment variable).</p>
+
+        <div class="note">
+            <strong>Notes:</strong>
+            <ul>
+                <li>Items 1–5 are actual Azure AD SPNs (client_id + secret + tenant).</li>
+                <li>Items 6–7 (<code>beyondtrust-*</code>) are API credentials for BeyondTrust, not Azure AD SPNs, but still fetched via the same <code>SpnToken</code> mechanism from Key Vault.</li>
+                <li><code>smtp-cmp-cred</code> is also defined in <span class="file-link">shared_code/constants.py</span> as <code>SMTP_KEYVAULT_SECRET</code> but is not actively used — all email notifications currently use <code>smtp-brewmation-cred</code>.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Q&A 3 -->
+<div class="qa-block">
+    <div class="question">Q: az-public-spn-reader — so this Key Vault secret name is one service principal, correct?</div>
+    <div class="answer">
+        <p>Yes, correct. <code>az-public-spn-reader</code> is the <strong>name of a single secret</strong> stored in Azure Key Vault. That secret contains a JSON string with the credentials of <strong>one service principal</strong>:</p>
+
+        <pre><code>{
+  "client_id": "...",
+  "secret": "...",
+  "tenant": "..."
+}</code></pre>
+
+        <p>You can see this in <span class="file-link">shared_code/spn_token.py</span> — it fetches the secret by name and parses the JSON:</p>
+
+        <pre><code>def get_spn_token(self, secret_name):
+    secrets_obj = AkvSecrets(os.environ["KEYVAULT_URI"], secret_name)
+    spn_token = secrets_obj.get_tokens()
+    spn_token = json.loads(spn_token.value)  # → {"client_id": "...", "secret": "...", "tenant": "..."}
+    return spn_token</code></pre>
+
+        <p>So <code>az-public-spn-reader</code> = 1 Key Vault secret = 1 service principal (an app registration in Azure AD with Reader permissions on the Azure Public Cloud tenant).</p>
+
+        <p>Your current file <span class="file-link">AzSQLServers/sql_servers.py</span> uses it indirectly via <code>ResourceGraph().get_resorce_graph(azenvironment)</code>, which internally calls <code>SpnToken().get_spn_token("az-public-spn-reader")</code> for the <code>AzurePublicCloud</code> environment (see <span class="file-link">shared_code/resourcegraph_client.py</span>).</p>
+    </div>
+</div>
+
+<!-- Q&A 4 -->
+<div class="qa-block">
+    <div class="question">Q: So this service principal az-public-spn-reader created with {"client_id": "...", "secret": "...", "tenant": "..."} in Azure AD with Reader permissions on the Azure Public Cloud tenant and stored in Key Vault, correct. So we can call this Key Vault secret name as service principal.</div>
+    <div class="answer">
+        <p>Yes, exactly. To summarize:</p>
+
+        <ol>
+            <li><strong>In Azure AD (Entra ID):</strong> An <strong>App Registration</strong> is created, which generates a <code>client_id</code> and <code>tenant_id</code>. A <strong>client secret</strong> is then created for it. This app is granted <strong>Reader</strong> permissions on the tenant's resources.</li>
+            <li><strong>In Azure Key Vault:</strong> The credentials are stored as a single secret named <code>az-public-spn-reader</code>, with the JSON value:
+                <pre><code>{
+  "client_id": "...",
+  "secret": "...",
+  "tenant": "..."
+}</code></pre>
+            </li>
+            <li><strong>In the code:</strong> The secret name <code>"az-public-spn-reader"</code> is used to fetch and refer to that service principal.</li>
+        </ol>
+
+        <p>So yes — in the context of this codebase, the <strong>Key Vault secret name</strong> (e.g. <code>az-public-spn-reader</code>) is effectively used as the <strong>identifier/alias for the service principal</strong>. When someone in this project says "the <code>az-public-spn-reader</code> service principal," they mean the Azure AD app registration whose credentials are stored under that Key Vault secret name.</p>
+
+        <p>The naming convention in this project makes it clear:</p>
+        <ul>
+            <li><code>az-public</code> → Azure Public Cloud</li>
+            <li><code>spn</code> → Service Principal</li>
+            <li><code>reader</code> / <code>cloudbolt</code> / <code>saviynt-xtractor</code> → the role or purpose of that SPN</li>
+        </ul>
+    </div>
+</div>
+
+</body>
+</html>
