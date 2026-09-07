@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Multithreading in keyvault_objects.py — Beginner Friendly Guide</title>
+<style>
+  :root{
+    --bg:#0f1420;
+    --panel:#161d2d;
+    --panel2:#1c2536;
+    --line:#2a3550;
+    --txt:#e6ecf5;
+    --muted:#9aa8c0;
+    --accent:#4da3ff;
+    --green:#4ade80;
+    --amber:#fbbf24;
+    --red:#f87171;
+    --purple:#c084fc;
+    --code:#0b0f18;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65;font-size:16px;
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:32px 20px 100px}
+  header.hero{
+    background:linear-gradient(135deg,#16233d 0%,#0f1420 70%);
+    border:1px solid var(--line);border-radius:14px;padding:28px 30px;margin-bottom:28px;
+  }
+  header.hero h1{margin:0 0 8px;font-size:30px;letter-spacing:.3px}
+  header.hero p{margin:0;color:var(--muted)}
+  h2{
+    margin:44px 0 14px;font-size:24px;border-bottom:2px solid var(--line);
+    padding-bottom:8px;scroll-margin-top:20px;
+  }
+  h3{margin:26px 0 10px;font-size:19px;color:#cfe0ff}
+  h4{margin:18px 0 6px;font-size:16px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  p{margin:10px 0}
+  code{
+    background:#222c42;padding:2px 6px;border-radius:4px;
+    font-family:Consolas,"Courier New",monospace;font-size:.92em;color:#ffd9a0;
+  }
+  pre{
+    background:var(--code);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;overflow:auto;margin:12px 0;
+  }
+  pre code{background:none;padding:0;color:#dbe6f6;font-size:14px;line-height:1.55}
+  .k{color:#ff7ab2}      /* keyword */
+  .s{color:#a5e844}      /* string */
+  .c{color:#6b7a99;font-style:italic} /* comment */
+  .f{color:#7cc7ff}      /* function */
+  .n{color:#f7c873}      /* number/const */
+  .panel{
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:18px 20px;margin:16px 0;
+  }
+  .note,.warn,.tip,.key{
+    border-left:4px solid var(--accent);background:var(--panel2);
+    border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0;
+  }
+  .warn{border-left-color:var(--red)}
+  .tip{border-left-color:var(--green)}
+  .key{border-left-color:var(--amber)}
+  .note b,.warn b,.tip b,.key b{display:block;margin-bottom:4px}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14.5px}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:#cfe0ff}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  details{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:16px 0}
+  summary{cursor:pointer;font-weight:600;color:var(--accent);outline:none}
+  summary::marker{color:var(--accent)}
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 24px}
+  .toc ol{margin:8px 0;padding-left:22px}
+  .toc a{color:var(--accent);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+
+  /* timeline diagram */
+  .timeline{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:18px;margin:16px 0;overflow-x:auto}
+  .trow{display:flex;align-items:center;margin:8px 0;min-width:640px}
+  .tlabel{width:150px;flex:0 0 150px;font-family:Consolas,monospace;font-size:13px;color:var(--muted)}
+  .tbar{height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;
+        font-size:12px;font-family:Consolas,monospace;color:#0b0f18;font-weight:700;white-space:nowrap}
+  .b-blue{background:#4da3ff}.b-green{background:#4ade80}.b-amber{background:#fbbf24}
+  .b-purple{background:#c084fc}.b-grey{background:#3a4661}
+  .tidle{height:26px;border-radius:5px;background:repeating-linear-gradient(45deg,#1e2739,#1e2739 6px,#263048 6px,#263048 12px);
+         display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}
+  .axis{display:flex;margin-top:10px;min-width:640px}
+  .axis .tlabel{visibility:hidden}
+  .axis .ticks{flex:1;display:flex;justify-content:space-between;font-size:11px;color:var(--muted);border-top:1px solid var(--line);padding-top:4px}
+
+  /* futures box diagram */
+  .futures{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}
+  .fut{
+    background:var(--panel2);border:2px solid var(--line);border-radius:10px;
+    padding:12px 14px;min-width:190px;font-family:Consolas,monospace;font-size:13px;
+  }
+  .fut .idx{color:var(--accent);font-weight:700}
+  .fut .st-done{color:var(--green)}
+  .fut .st-run{color:var(--amber)}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:700;margin-right:6px}
+  .bg-in{background:#1e3a5f;color:#8ecbff}
+  .bg-out{background:#1e4032;color:#8ef0b8}
+  .flowbox{
+    background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    padding:10px 14px;margin:6px 0;font-family:Consolas,monospace;font-size:13.5px
+  }
+  .arrow{text-align:center;color:var(--accent);font-size:20px;line-height:1}
+  .num{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:26px;height:26px;border-radius:50%;background:var(--accent);color:#08111f;
+    font-weight:700;font-size:14px;margin-right:8px;flex:0 0 26px
+  }
+  .step{display:flex;align-items:flex-start;margin:14px 0}
+  .step .body{flex:1}
+  .kbd{background:#2a3550;border:1px solid #47597f;border-bottom-width:3px;border-radius:5px;padding:1px 7px;font-size:13px;font-family:Consolas,monospace}
+  .center{text-align:center}
+  .muted{color:var(--muted)}
+  .hl{background:rgba(77,163,255,.14);border-left:3px solid var(--accent);display:block;padding-left:8px;margin-left:-11px}
+  button.sim{
+    background:var(--accent);color:#08111f;border:none;border-radius:8px;
+    padding:9px 18px;font-weight:700;cursor:pointer;font-size:14px;margin:4px 6px 4px 0
+  }
+  button.sim.alt{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  button.sim:hover{filter:brightness(1.1)}
+  #simlog{font-family:Consolas,monospace;font-size:13px;background:var(--code);border:1px solid var(--line);
+          border-radius:8px;padding:12px;height:210px;overflow:auto;margin-top:12px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>Multithreading Explained — <code>keyvault_objects.py</code></h1>
+  <p>A beginner-friendly walkthrough of <code>ThreadPoolExecutor</code>, <code>executor.map()</code>, tuple returns, and result ordering — using the real Key Vault extractor code as the example.</p>
+</header>
+
+<div class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#source">The full script (reference)</a></li>
+    <li><a href="#why">Why threads at all? (the problem being solved)</a></li>
+    <li><a href="#basics">Threading basics — process, thread, GIL</a></li>
+    <li><a href="#pool">What a ThreadPoolExecutor actually is</a></li>
+    <li><a href="#map">Deep dive: <code>executor.map()</code> line by line</a></li>
+    <li><a href="#multiple">Where the "multiple calls" come from</a></li>
+    <li><a href="#order">Why order is preserved even if a thread finishes early</a></li>
+    <li><a href="#tuple">Returning two values & unpacking them</a></li>
+    <li><a href="#trace">Full end-to-end trace of one run</a></li>
+    <li><a href="#simulator">Interactive simulator</a></li>
+    <li><a href="#scripts">Runnable practice scripts</a></li>
+    <li><a href="#alternatives">map vs submit vs as_completed</a></li>
+    <li><a href="#pitfalls">Pitfalls in this code & how to improve</a></li>
+    <li><a href="#cheat">Cheat sheet</a></li>
+  </ol>
+</div>
+
+
+<!-- ============================================================ -->
+<h2 id="source">1. The full script (reference)</h2>
+<p>This is the complete file being explained. Everything below refers back to it. Expand to read.</p>
+
+<details open>
+<summary>AzKeyVaultObjects/keyvault_objects.py — full source</summary>
+<pre><code><span class="k">import</span> concurrent.futures
+<span class="k">from</span> shared_code.keyvault_client <span class="k">import</span> KeyVaultClient
+<span class="k">import</span> azure.mgmt.resourcegraph <span class="k">as</span> arg
+<span class="k">from</span> shared_code.db <span class="k">import</span> DB
+<span class="k">from</span> shared_code.resourcegraph_client <span class="k">import</span> ResourceGraph
+<span class="k">import</span> json,logging
+<span class="k">from</span> datetime <span class="k">import</span> datetime
+logging.basicConfig(level=logging.INFO, format=<span class="s">'%(asctime)s - %(levelname)s - %(message)s'</span>)
+
+<span class="k">class</span> <span class="f">KvObjects</span>:
+    <span class="k">def</span> <span class="f">__init__</span>(self):
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="f">get_kv_objects</span>(self):
+        keys_pub, empty_keys_pub = self.kv_keys_api(<span class="s">'AzurePublicCloud'</span>)
+        keys_china, empty_keys_china = self.kv_keys_api(<span class="s">'AzureChinaCloud'</span>)
+        result_keys = keys_pub + keys_china
+        result_empty_keys = empty_keys_pub + empty_keys_china
+        logging.info(<span class="s">f"Updating tblAzKeyVaultKeys with {len(result_keys)} records"</span>)
+        logging.info(<span class="s">f"Updating tblAzKeyVaultsWithoutKeys with {len(result_empty_keys)} records"</span>)
+        objdb = DB()
+        objdb.executescalar(sql_query=<span class="s">f"INSERT INTO tblAzKeyVaultKeys (AzKeyVaultKeys) VALUES (?)"</span>, action=<span class="s">"insert"</span>, values=json.dumps(result_keys))
+
+        secrets_pub, empty_secrets_pub = self.kv_secrets_api(<span class="s">'AzurePublicCloud'</span>)
+        secrets_china, empty_secrets_china = self.kv_secrets_api(<span class="s">'AzureChinaCloud'</span>)
+        result_secrets = secrets_pub + secrets_china
+        result_empty_secrets = empty_secrets_pub + empty_secrets_china
+        logging.info(<span class="s">f"Updating tblAzKeyVaultSecrets with {len(result_secrets)} records"</span>)
+        logging.info(<span class="s">f"Updating tblAzKeyVaultsWithoutSecrets with {len(result_empty_secrets)} records"</span>)
+        objdb = DB()
+        objdb.executescalar(sql_query=<span class="s">f"INSERT INTO tblAzKeyVaultSecrets (AzKeyVaultSecrets) VALUES (?)"</span>, action=<span class="s">"insert"</span>, values=json.dumps(result_secrets))
+
+        <span class="c"># vaults with neither keys nor secrets</span>
+        result_fully_empty = self.get_empty_kvs(result_empty_keys, result_empty_secrets)
+        logging.info(<span class="s">f"Updating tblAzKeyVaultsEmpty with {len(result_fully_empty)} records"</span>)
+        objdb.executescalar(sql_query=<span class="s">f"INSERT INTO tblAzKeyVaultsEmpty (AzKeyVaultsEmpty) VALUES (?)"</span>, action=<span class="s">"insert"</span>, values=json.dumps(result_fully_empty))
+
+    <span class="k">def</span> <span class="f">get_empty_kvs</span>(self, empty_keys, empty_secrets):
+        empty_secrets_ids = {e[<span class="s">'keyvault_id'</span>] <span class="k">for</span> e <span class="k">in</span> empty_secrets}
+        fully_empty = []
+        <span class="k">for</span> ek <span class="k">in</span> empty_keys:
+            <span class="k">if</span> ek[<span class="s">'keyvault_id'</span>] <span class="k">in</span> empty_secrets_ids:
+                fully_empty.append({
+                    <span class="s">'keyvault_id'</span>: ek[<span class="s">'keyvault_id'</span>],
+                    <span class="s">'keyvault_name'</span>: ek[<span class="s">'keyvault_name'</span>],
+                    <span class="s">'resource_group'</span>: ek[<span class="s">'resource_group'</span>],
+                    <span class="s">'subscription_id'</span>: ek[<span class="s">'subscription_id'</span>],
+                    <span class="s">'tenant'</span>: ek[<span class="s">'tenant'</span>],
+                    <span class="s">'cloud'</span>: ek[<span class="s">'cloud'</span>]
+                })
+        <span class="k">return</span> fully_empty
+
+    <span class="k">def</span> <span class="f">get_all_kvs</span>(self,cloud):
+        argClient = ResourceGraph().get_resorce_graph(cloud)
+        argQueryOptions = arg.models.QueryRequestOptions(result_format=<span class="s">"objectArray"</span>, top=<span class="n">1000</span>)
+        strQuery = <span class="s">"""
+        resources
+        | where type == "microsoft.keyvault/vaults"
+        | summarize ids = make_list(id, 10000) by resourceGroup,subscriptionId,tenantId
+        | extend bag = pack('resource_group',resourceGroup,'id',ids)
+        | summarize keyvaults = make_list(bag, 10000) by subscriptionId,tenantId
+        """</span>
+        argQuery = arg.models.QueryRequest(query=strQuery, options=argQueryOptions)
+        argResults = argClient.resources(argQuery)
+        result = argResults.as_dict()
+        <span class="k">while</span>(<span class="s">"skip_token"</span> <span class="k">in</span> result.keys() <span class="k">and</span> result[<span class="s">"skip_token"</span>]!= <span class="k">None</span>):
+            argQueryOptions = arg.models.QueryRequestOptions(skip_token=result[<span class="s">"skip_token"</span>],result_format=<span class="s">"objectArray"</span>, top=<span class="n">1000</span>)
+            argQuery = arg.models.QueryRequest(query=strQuery, options=argQueryOptions)
+            argResults = argClient.resources(argQuery).as_dict()
+            result[<span class="s">"count"</span>] += argResults[<span class="s">"count"</span>]
+            result[<span class="s">"data"</span>] += argResults[<span class="s">"data"</span>]
+            result[<span class="s">"skip_token"</span>] = argResults[<span class="s">"skip_token"</span>] <span class="k">if</span> <span class="s">"skip_token"</span> <span class="k">in</span> argResults.keys() <span class="k">else</span> <span class="k">None</span>
+        <span class="k">return</span> result[<span class="s">"data"</span>]
+
+    <span class="k">def</span> <span class="f">secrets_paginate</span>(self, kvs, cloud):
+        secrets = []
+        empty_secrets = []
+        <span class="k">try</span>:
+            kv_client = KeyVaultClient().get_kv_client(kvs[<span class="s">'subscriptionId'</span>], cloud)
+            tenant = kvs[<span class="s">'tenantId'</span>]
+        <span class="k">except</span> Exception <span class="k">as</span> e:
+            logging.error(<span class="s">f"Cannot create KV client for subscription {kvs.get('subscriptionId')}: {e}"</span>)
+            <span class="k">return</span> [], []
+        <span class="k">for</span> kv <span class="k">in</span> kvs[<span class="s">'keyvaults'</span>]:
+            <span class="k">for</span> kv_id <span class="k">in</span> kv[<span class="s">'id'</span>]:
+                logging.info(<span class="s">f"Processing Key Vault {kv_id}"</span>)
+                vault_name = kv_id.split(<span class="s">'/'</span>)[-<span class="n">1</span>]
+                <span class="k">try</span>:
+                    secrets_list = list(kv_client.secrets.list(kv[<span class="s">'resource_group'</span>], vault_name))
+
+                    <span class="k">if</span> <span class="k">not</span> secrets_list:
+                        empty_secrets.append({
+                            <span class="s">'keyvault_id'</span>: kv_id,
+                            <span class="s">'keyvault_name'</span>: vault_name,
+                            <span class="s">'resource_group'</span>: kv[<span class="s">'resource_group'</span>],
+                            <span class="s">'subscription_id'</span>: kvs[<span class="s">'subscriptionId'</span>],
+                            <span class="s">'tenant'</span>: tenant,
+                            <span class="s">'cloud'</span>: cloud,
+                            <span class="s">'secrets_count'</span>: <span class="n">0</span>
+                        })
+                        <span class="k">continue</span>
+
+                    <span class="k">for</span> secret <span class="k">in</span> secrets_list:
+                        temp = {}
+                        temp[<span class="s">'id'</span>] = secret.id
+                        temp[<span class="s">'name'</span>] = secret.name
+                        temp[<span class="s">'created_on'</span>] = secret.properties.attributes.created.strftime(<span class="s">"%m/%d/%Y %H:%M:%S"</span>) <span class="k">if</span> secret.properties.attributes.created <span class="k">else</span> <span class="k">None</span>
+                        temp[<span class="s">'expires_on'</span>] = secret.properties.attributes.expires.strftime(<span class="s">"%m/%d/%Y %H:%M:%S"</span>) <span class="k">if</span> secret.properties.attributes.expires <span class="k">else</span> <span class="k">None</span>
+                        temp[<span class="s">'content_type'</span>] = secret.properties.content_type
+                        temp[<span class="s">'enabled'</span>] = secret.properties.attributes.enabled
+                        temp[<span class="s">'updated'</span>] = secret.properties.attributes.updated.strftime(<span class="s">"%m/%d/%Y %H:%M:%S"</span>) <span class="k">if</span> secret.properties.attributes.updated <span class="k">else</span> <span class="k">None</span>
+                        temp[<span class="s">'properties'</span>] = secret.properties.as_dict()
+                        temp[<span class="s">'tags'</span>] = secret.tags
+                        temp[<span class="s">'keyvault_name'</span>] = vault_name
+                        temp[<span class="s">'resource_group'</span>] = kv[<span class="s">'resource_group'</span>]
+                        temp[<span class="s">'subscription_id'</span>] = kvs[<span class="s">'subscriptionId'</span>]
+                        temp[<span class="s">'tenant'</span>] = tenant
+                        secrets.append(temp)
+                <span class="k">except</span> Exception <span class="k">as</span> e:
+                    logging.error(<span class="s">f"Error processing Key Vault {vault_name}: {e}"</span>)
+                    <span class="k">continue</span>
+                logging.info(<span class="s">f"Finished processing Key Vault {kv_id} current total secrets {len(secrets)}"</span>)
+        <span class="k">return</span> secrets, empty_secrets
+
+    <span class="k">def</span> <span class="f">keys_paginate</span>(self, kvs, cloud):
+        keys = []
+        empty_keys = []
+        <span class="k">try</span>:
+            kv_client = KeyVaultClient().get_kv_client(kvs[<span class="s">'subscriptionId'</span>], cloud)
+            tenant = kvs[<span class="s">'tenantId'</span>]
+        <span class="k">except</span> Exception <span class="k">as</span> e:
+            logging.error(<span class="s">f"Cannot create KV client for subscription {kvs.get('subscriptionId')}: {e}"</span>)
+            <span class="k">return</span> [], []
+        <span class="k">for</span> kv <span class="k">in</span> kvs[<span class="s">'keyvaults'</span>]:
+            <span class="k">for</span> kv_id <span class="k">in</span> kv[<span class="s">'id'</span>]:
+                logging.info(<span class="s">f"Processing Key Vault {kv_id}"</span>)
+                vault_name = kv_id.split(<span class="s">'/'</span>)[-<span class="n">1</span>]
+                <span class="k">try</span>:
+                    keys_list = list(kv_client.keys.list(kv[<span class="s">'resource_group'</span>], vault_name))
+
+                    <span class="k">if</span> <span class="k">not</span> keys_list:
+                        empty_keys.append({
+                            <span class="s">'keyvault_id'</span>: kv_id,
+                            <span class="s">'keyvault_name'</span>: vault_name,
+                            <span class="s">'resource_group'</span>: kv[<span class="s">'resource_group'</span>],
+                            <span class="s">'subscription_id'</span>: kvs[<span class="s">'subscriptionId'</span>],
+                            <span class="s">'tenant'</span>: tenant,
+                            <span class="s">'cloud'</span>: cloud,
+                            <span class="s">'keys_count'</span>: <span class="n">0</span>
+                        })
+                        <span class="k">continue</span>
+
+                    <span class="k">for</span> key <span class="k">in</span> keys_list:
+                        temp = {}
+                        temp[<span class="s">'id'</span>] = key.id
+                        temp[<span class="s">'name'</span>] = key.name
+                        temp[<span class="s">'created_on'</span>] = datetime.fromtimestamp(key.attributes.created).strftime(<span class="s">"%m/%d/%Y %H:%M:%S"</span>) <span class="k">if</span> key.attributes.created <span class="k">else</span> <span class="k">None</span>
+                        temp[<span class="s">'expires_on'</span>] = datetime.fromtimestamp(key.attributes.expires).strftime(<span class="s">"%m/%d/%Y %H:%M:%S"</span>) <span class="k">if</span> key.attributes.expires <span class="k">else</span> <span class="k">None</span>
+                        temp[<span class="s">'key_type'</span>] = key.kty
+                        temp[<span class="s">'key_size'</span>] = key.key_size
+                        temp[<span class="s">'enabled'</span>] = key.attributes.enabled
+                        temp[<span class="s">'updated'</span>] = datetime.fromtimestamp(key.attributes.updated).strftime(<span class="s">"%m/%d/%Y %H:%M:%S"</span>) <span class="k">if</span> key.attributes.updated <span class="k">else</span> <span class="k">None</span>
+                        temp[<span class="s">'attributes'</span>] = key.attributes.as_dict()
+                        temp[<span class="s">'keyvault_name'</span>] = vault_name
+                        temp[<span class="s">'resource_group'</span>] = kv[<span class="s">'resource_group'</span>]
+                        temp[<span class="s">'subscription_id'</span>] = kvs[<span class="s">'subscriptionId'</span>]
+                        temp[<span class="s">'tenant'</span>] = tenant
+                        keys.append(temp)
+                <span class="k">except</span> Exception <span class="k">as</span> e:
+                    logging.error(<span class="s">f"Error processing Key Vault {vault_name}: {e}"</span>)
+                    <span class="k">continue</span>
+                logging.info(<span class="s">f"Finished processing Key Vault {kv_id} current total keys {len(keys)}"</span>)
+        <span class="k">return</span> keys, empty_keys
+
+    <span class="k">def</span> <span class="f">process_secrets</span>(self, kv, cloud):
+        <span class="k">return</span> self.secrets_paginate(kv, cloud)
+
+    <span class="k">def</span> <span class="f">process_keys</span>(self, kv, cloud):
+        <span class="k">return</span> self.keys_paginate(kv, cloud)
+
+    <span class="k">def</span> <span class="f">kv_secrets_api</span>(self, cloud):
+        secrets = []
+        empty_secrets = []
+        kvs = self.get_all_kvs(cloud)
+        <span class="k">with</span> concurrent.futures.ThreadPoolExecutor() <span class="k">as</span> executor:
+            results = list(executor.map(<span class="k">lambda</span> args: self.process_secrets(*args), [(kv, cloud) <span class="k">for</span> kv <span class="k">in</span> kvs]))
+            <span class="k">for</span> s, es <span class="k">in</span> results:
+                secrets.extend(s)
+                empty_secrets.extend(es)
+        <span class="k">return</span> secrets, empty_secrets
+
+    <span class="k">def</span> <span class="f">kv_keys_api</span>(self, cloud):
+        keys = []
+        empty_keys = []
+        kvs = self.get_all_kvs(cloud)
+        <span class="k">with</span> concurrent.futures.ThreadPoolExecutor() <span class="k">as</span> executor:
+            results = list(executor.map(<span class="k">lambda</span> args: self.process_keys(*args), [(kv, cloud) <span class="k">for</span> kv <span class="k">in</span> kvs]))
+            <span class="k">for</span> k, ek <span class="k">in</span> results:
+                keys.extend(k)
+                empty_keys.extend(ek)
+        <span class="k">return</span> keys, empty_keys
+</code></pre>
+</details>
+
+
+<!-- ============================================================ -->
+<h2 id="why">2. Why threads at all? (the problem being solved)</h2>
+
+<p>The job of this script is simple to describe:</p>
+
+<div class="panel">
+  <div class="flowbox">Ask Azure Resource Graph: <b>"give me every Key Vault, grouped by subscription"</b></div>
+  <div class="arrow">↓</div>
+  <div class="flowbox">For <b>each subscription</b>, call the Key Vault API to list keys / secrets in every vault</div>
+  <div class="arrow">↓</div>
+  <div class="flowbox">Collect everything into one big list and INSERT into SQL</div>
+</div>
+
+<p>The expensive part is the middle step. Every call like <code>kv_client.keys.list(...)</code> is a <b>network request</b> to Azure. A single request may take 200&nbsp;ms–2&nbsp;s. Your CPU does almost nothing during that time — it just waits for bytes to come back over the wire.</p>
+
+<h4>Sequential (no threads)</h4>
+<div class="timeline">
+  <div class="trow"><div class="tlabel">main thread</div>
+    <div class="tbar b-blue" style="width:120px">sub-1 (3s)</div>
+    <div class="tbar b-green" style="width:200px;margin-left:2px">sub-2 (5s)</div>
+    <div class="tbar b-amber" style="width:80px;margin-left:2px">sub-3 (2s)</div>
+  </div>
+  <div class="axis"><div class="tlabel"></div><div class="ticks"><span>0s</span><span>5s</span><span>10s</span></div></div>
+  <p class="muted" style="margin:6px 0 0">Total = 3 + 5 + 2 = <b>10 seconds</b>. Each subscription waits for the previous one to finish.</p>
+</div>
+
+<h4>Concurrent (ThreadPoolExecutor — what this code does)</h4>
+<div class="timeline">
+  <div class="trow"><div class="tlabel">worker-1 → sub-1</div><div class="tbar b-blue" style="width:120px">3s</div><div class="tidle" style="width:80px;margin-left:2px">idle</div></div>
+  <div class="trow"><div class="tlabel">worker-2 → sub-2</div><div class="tbar b-green" style="width:200px">5s</div></div>
+  <div class="trow"><div class="tlabel">worker-3 → sub-3</div><div class="tbar b-amber" style="width:80px">2s</div><div class="tidle" style="width:120px;margin-left:2px">idle</div></div>
+  <div class="axis"><div class="tlabel"></div><div class="ticks"><span>0s</span><span>2.5s</span><span>5s</span></div></div>
+  <p class="muted" style="margin:6px 0 0">Total = <b>5 seconds</b> (the slowest one). All three waits overlap.</p>
+</div>
+
+<div class="key">
+  <b>Core idea</b>
+  Threads don't make any single network call faster. They let you <b>wait for many calls at the same time</b> instead of one after another. Total time drops from "sum of all" to "the slowest one".
+</div>
+
+
+<!-- ============================================================ -->
+<h2 id="basics">3. Threading basics — process, thread, and the GIL</h2>
+
+<table>
+  <tr><th style="width:150px">Term</th><th>Beginner explanation</th></tr>
+  <tr><td><b>Process</b></td><td>Your running Python program. Has its own memory. When you run <code>python script.py</code>, that's one process.</td></tr>
+  <tr><td><b>Thread</b></td><td>An independent "line of execution" <i>inside</i> the same process. All threads in a process <b>share the same variables and memory</b>. Cheap to create.</td></tr>
+  <tr><td><b>Main thread</b></td><td>The thread that starts when Python starts. In our code, this is the one running <code>kv_keys_api</code>.</td></tr>
+  <tr><td><b>Worker thread</b></td><td>An extra thread created by the pool to run your function. Here each worker runs one <code>process_keys(...)</code> call.</td></tr>
+  <tr><td><b>I/O-bound</b></td><td>Work that spends most of its time <b>waiting</b> (network, disk, database). ✅ Threads help a lot. <b>This script is I/O-bound.</b></td></tr>
+  <tr><td><b>CPU-bound</b></td><td>Work that spends time <b>calculating</b> (math, image processing). ❌ Threads don't help in Python — use <code>ProcessPoolExecutor</code>.</td></tr>
+  <tr><td><b>GIL</b></td><td>Global Interpreter Lock. Only one thread runs Python bytecode at a time. <b>But</b> the GIL is <i>released</i> during network/disk waits — which is exactly why threading works beautifully here.</td></tr>
+</table>
+
+<div class="tip">
+  <b>Rule of thumb</b>
+  Waiting for something outside Python (an API, a DB, a file)? → <b>threads</b>.<br>
+  Crunching numbers inside Python? → <b>processes</b>.
+</div>
+
+<h3>What the GIL actually looks like</h3>
+<pre><code><span class="c"># Thread A                        # Thread B</span>
+build request dict     <span class="c"># holds GIL</span>
+send HTTP request      <span class="c"># ── releases GIL while waiting ──&gt;  build request dict  (gets GIL)</span>
+   (waiting on socket)                                    send HTTP request
+   (waiting on socket)                                       (waiting on socket)
+response arrives       <span class="c"># &lt;── reacquires GIL to parse</span>
+parse JSON</code></pre>
+<p>Both threads are "in flight" at the same time because the slow part (the socket wait) doesn't need the GIL.</p>
+
+
+<!-- ============================================================ -->
+<h2 id="pool">4. What a <code>ThreadPoolExecutor</code> actually is</h2>
+
+<p>A thread pool is a <b>reusable team of workers</b> plus a <b>queue of jobs</b>.</p>
+
+<div class="panel">
+  <div class="flowbox">📥 <b>Job queue</b>: (sub-1, cloud) · (sub-2, cloud) · (sub-3, cloud) · (sub-4, cloud) …</div>
+  <div class="arrow">↓ workers pull jobs as they become free</div>
+  <div class="grid2">
+    <div class="flowbox">👷 worker-1 → running sub-1</div>
+    <div class="flowbox">👷 worker-2 → running sub-2</div>
+    <div class="flowbox">👷 worker-3 → running sub-3</div>
+    <div class="flowbox">👷 worker-4 → running sub-4</div>
+  </div>
+  <div class="arrow">↓ each finished job's return value is stored</div>
+  <div class="flowbox">📤 <b>results</b> (kept in submission order)</div>
+</div>
+
+<h3>The <code>with</code> statement matters</h3>
+<pre><code><span class="k">with</span> concurrent.futures.ThreadPoolExecutor() <span class="k">as</span> executor:
+    ...
+<span class="c"># &lt;- at this point executor.shutdown(wait=True) is called automatically.</span>
+<span class="c">#    Python blocks here until EVERY worker thread has finished, then</span>
+<span class="c">#    destroys the threads. No leaked threads.</span></code></pre>
+
+<h3>How many workers do you get?</h3>
+<p><code>ThreadPoolExecutor()</code> with no arguments uses the default:</p>
+<pre><code>max_workers = min(<span class="n">32</span>, (os.cpu_count() <span class="k">or</span> <span class="n">1</span>) + <span class="n">4</span>)
+
+<span class="c"># 4-core machine   -&gt; 8 workers</span>
+<span class="c"># 8-core machine   -&gt; 12 workers</span>
+<span class="c"># 64-core machine  -&gt; 32 workers (capped)</span></code></pre>
+
+<div class="warn">
+  <b>Important consequence</b>
+  If you have <b>50 subscriptions</b> but only <b>12 workers</b>, only 12 run at a time. The other 38 sit in the queue and start as workers free up. You can set it explicitly: <code>ThreadPoolExecutor(max_workers=20)</code>.
+</div>
+
+
+<!-- ============================================================ -->
+<h2 id="map">5. Deep dive: <code>executor.map()</code> line by line</h2>
+
+<p>Here is the line, split into its parts:</p>
+
+<pre><code>results = list(executor.map(<span class="k">lambda</span> args: self.process_keys(*args), [(kv, cloud) <span class="k">for</span> kv <span class="k">in</span> kvs]))
+         └──┬──┘└───┬────┘└──────────────┬──────────────────┘  └──────────┬───────────────┘
+            │       │                    │                                │
+            │       │                    │                        ④ the LIST of inputs
+            │       │            ③ the FUNCTION each worker runs
+            │   ② schedule one call per input, on worker threads
+        ① force the lazy iterator to actually run &amp; collect everything</code></pre>
+
+<h3>④ The input list</h3>
+<pre><code>[(kv, cloud) <span class="k">for</span> kv <span class="k">in</span> kvs]
+
+<span class="c"># kvs came from get_all_kvs(cloud) and looks like:</span>
+kvs = [
+    {<span class="s">'subscriptionId'</span>: <span class="s">'sub-1'</span>, <span class="s">'tenantId'</span>: <span class="s">'t1'</span>, <span class="s">'keyvaults'</span>: [...]},
+    {<span class="s">'subscriptionId'</span>: <span class="s">'sub-2'</span>, <span class="s">'tenantId'</span>: <span class="s">'t1'</span>, <span class="s">'keyvaults'</span>: [...]},
+    {<span class="s">'subscriptionId'</span>: <span class="s">'sub-3'</span>, <span class="s">'tenantId'</span>: <span class="s">'t2'</span>, <span class="s">'keyvaults'</span>: [...]},
+]
+
+<span class="c"># so the comprehension produces:</span>
+[
+    ({<span class="s">'subscriptionId'</span>: <span class="s">'sub-1'</span>, ...}, <span class="s">'AzurePublicCloud'</span>),   <span class="c"># item 0</span>
+    ({<span class="s">'subscriptionId'</span>: <span class="s">'sub-2'</span>, ...}, <span class="s">'AzurePublicCloud'</span>),   <span class="c"># item 1</span>
+    ({<span class="s">'subscriptionId'</span>: <span class="s">'sub-3'</span>, ...}, <span class="s">'AzurePublicCloud'</span>),   <span class="c"># item 2</span>
+]</code></pre>
+<p>Each element is a <b>tuple of the arguments</b> for one call. <code>cloud</code> is repeated in every tuple because it is the same for the whole batch.</p>
+
+<h3>③ The lambda and the <code>*args</code> trick</h3>
+<p><code>map</code> only ever passes <b>one</b> item to the function. But <code>process_keys</code> needs <b>two</b> parameters. The lambda bridges that gap:</p>
+
+<pre><code><span class="k">lambda</span> args: self.process_keys(*args)
+<span class="c">#     ▲                         ▲</span>
+<span class="c">#     │                         └── * unpacks the tuple into separate arguments</span>
+<span class="c">#     └── receives ONE item, e.g. args = (kv_dict, 'AzurePublicCloud')</span>
+
+<span class="c"># So this:</span>
+args = (kv_dict, <span class="s">'AzurePublicCloud'</span>)
+self.process_keys(*args)
+<span class="c"># becomes exactly this:</span>
+self.process_keys(kv_dict, <span class="s">'AzurePublicCloud'</span>)</code></pre>
+
+<div class="tip">
+  <b>Simpler alternative</b>
+  <code>executor.map</code> also accepts multiple iterables, so the lambda can be avoided entirely:
+  <pre style="margin-top:8px"><code>results = list(executor.map(self.process_keys, kvs, itertools.repeat(cloud)))</code></pre>
+  Same behaviour, no lambda, no tuple building.
+</div>
+
+<h3>② + ① What <code>map</code> does internally</h3>
+<p>This is a simplified version of CPython's real implementation — it explains almost every question people have about <code>map</code>:</p>
+
+<pre><code><span class="k">def</span> <span class="f">map</span>(self, fn, *iterables):
+    <span class="hl">fs = [self.submit(fn, *args) <span class="k">for</span> args <span class="k">in</span> zip(*iterables)]   <span class="c"># ① submit ALL jobs NOW, in order</span></span>
+
+    <span class="k">def</span> <span class="f">result_iterator</span>():
+        <span class="hl"><span class="k">for</span> f <span class="k">in</span> fs:            <span class="c"># ② walk the futures in SUBMISSION order</span></span>
+            <span class="hl"><span class="k">yield</span> f.result()      <span class="c"># ③ block until THIS future is done, then hand back its value</span></span>
+
+    <span class="k">return</span> result_iterator()      <span class="c"># ④ a lazy generator — nothing is collected until you iterate it</span></code></pre>
+
+<table>
+  <tr><th>Observation</th><th>Why it matters</th></tr>
+  <tr><td><code>submit</code> is called for <b>every</b> item immediately</td><td>All jobs are queued up-front; workers start right away. This is where concurrency begins.</td></tr>
+  <tr><td>It returns a <b>generator</b>, not a list</td><td>That's why the code wraps it in <code>list(...)</code>. Without <code>list()</code> nothing would be collected and results would be consumed lazily.</td></tr>
+  <tr><td>It loops <code>fs</code> positionally</td><td>This is the entire reason output order matches input order. See §7.</td></tr>
+  <tr><td><code>f.result()</code> re-raises exceptions</td><td>If a worker raised, the exception pops out <i>here</i>, in the main thread, and aborts the whole <code>list()</code>.</td></tr>
+</table>
+
+
+<!-- ============================================================ -->
+<h2 id="multiple">6. Where the "multiple calls" come from</h2>
+
+<p>This is the part that confuses most people. There is <b>one line</b> of code, but it produces <b>N function calls</b>.</p>
+
+<div class="step"><span class="num">1</span><div class="body">
+<code>kvs</code> is a <b>list</b>. Its length = number of unique <code>(subscriptionId, tenantId)</code> groups, because the KQL query ends with <code>summarize keyvaults = make_list(bag, 10000) by subscriptionId, tenantId</code>. If you have 40 subscriptions, <code>len(kvs) == 40</code>.
+</div></div>
+
+<div class="step"><span class="num">2</span><div class="body">
+The comprehension turns those 40 items into 40 argument tuples.
+</div></div>
+
+<div class="step"><span class="num">3</span><div class="body">
+<code>map</code> calls <code>submit()</code> <b>once per tuple</b> → 40 separate jobs, each a complete independent invocation of <code>process_keys → keys_paginate</code>.
+</div></div>
+
+<div class="step"><span class="num">4</span><div class="body">
+Each of those 40 calls independently creates its own <code>kv_client</code>, loops its own vaults, builds its own local <code>keys</code> / <code>empty_keys</code> lists, and returns its own tuple.
+</div></div>
+
+<h3>Side-by-side: the same thing without threads</h3>
+<div class="grid2">
+<div>
+<h4>What the code does</h4>
+<pre><code><span class="k">with</span> ThreadPoolExecutor() <span class="k">as</span> ex:
+    results = list(ex.map(
+        <span class="k">lambda</span> a: self.process_keys(*a),
+        [(kv, cloud) <span class="k">for</span> kv <span class="k">in</span> kvs]
+    ))</code></pre>
+</div>
+<div>
+<h4>Identical output, no threads</h4>
+<pre><code>results = []
+<span class="k">for</span> kv <span class="k">in</span> kvs:
+    results.append(self.process_keys(kv, cloud))</code></pre>
+</div>
+</div>
+<p class="center muted">Same list, same order, same contents — the threaded version is just <b>much faster</b> because the waits overlap.</p>
+
+<h3>Two levels of looping — only the outer one is parallel</h3>
+<pre><code>kv_keys_api
+ └─ executor.map over kvs                <span class="c"># ← ✅ PARALLEL: one thread per subscription</span>
+     └─ keys_paginate(one subscription)
+         └─ <span class="k">for</span> kv <span class="k">in</span> kvs[<span class="s">'keyvaults'</span>]:        <span class="c"># ← ❌ sequential inside that thread</span>
+             └─ <span class="k">for</span> kv_id <span class="k">in</span> kv[<span class="s">'id'</span>]:       <span class="c"># ← ❌ sequential inside that thread</span>
+                 └─ kv_client.keys.list(...)  <span class="c"># one network call at a time</span></code></pre>
+
+<div class="warn">
+  <b>Practical impact</b>
+  A subscription with 300 vaults still processes those 300 vaults <b>one after another</b> inside its single thread. If one subscription owns most of the vaults, it becomes the bottleneck and the pool sits mostly idle waiting for it.
+</div>
+
+
+<!-- ============================================================ -->
+<h2 id="order">7. Why order is preserved even if a thread finishes early</h2>
+
+<p>The common worry: <i>"If sub-3 finishes first, won't it end up first in the list?"</i> — <b>No.</b> Here's why.</p>
+
+<h3>The key object: a <code>Future</code></h3>
+<p>When you <code>submit()</code> a job you immediately get back a <b>Future</b> — an empty box with a label. The box is created <i>before</i> any work happens, and it never moves.</p>
+
+<div class="futures">
+  <div class="fut"><span class="idx">fs[0]</span> → sub-1<br><span class="st-run">state: RUNNING</span><br>result: —</div>
+  <div class="fut"><span class="idx">fs[1]</span> → sub-2<br><span class="st-run">state: RUNNING</span><br>result: —</div>
+  <div class="fut"><span class="idx">fs[2]</span> → sub-3<br><span class="st-run">state: RUNNING</span><br>result: —</div>
+</div>
+<p class="center muted">t = 0s — all three submitted, in input order. Boxes are empty.</p>
+
+<div class="futures">
+  <div class="fut"><span class="idx">fs[0]</span> → sub-1<br><span class="st-run">state: RUNNING</span><br>result: —</div>
+  <div class="fut"><span class="idx">fs[1]</span> → sub-2<br><span class="st-run">state: RUNNING</span><br>result: —</div>
+  <div class="fut" style="border-color:var(--green)"><span class="idx">fs[2]</span> → sub-3<br><span class="st-done">state: DONE ✔</span><br>result: (keys3, empty3)</div>
+</div>
+<p class="center muted">t = 2s — sub-3 finished <b>first</b>. Its value is written into <b>its own box</b>, <code>fs[2]</code>. It does <b>not</b> jump to the front of anything.</p>
+
+<div class="futures">
+  <div class="fut" style="border-color:var(--green)"><span class="idx">fs[0]</span> → sub-1<br><span class="st-done">state: DONE ✔</span><br>result: (keys1, empty1)</div>
+  <div class="fut" style="border-color:var(--green)"><span class="idx">fs[1]</span> → sub-2<br><span class="st-done">state: DONE ✔</span><br>result: (keys2, empty2)</div>
+  <div class="fut" style="border-color:var(--green)"><span class="idx">fs[2]</span> → sub-3<br><span class="st-done">state: DONE ✔</span><br>result: (keys3, empty3)</div>
+</div>
+<p class="center muted">t = 5s — everything done. The boxes are still in their original order.</p>
+
+<h3>The collector reads boxes by position, not by finish time</h3>
+<pre><code><span class="k">for</span> f <span class="k">in</span> fs:          <span class="c"># fs[0], then fs[1], then fs[2] — always this order</span>
+    <span class="k">yield</span> f.result()  <span class="c"># waits ONLY if that specific box is still empty</span></code></pre>
+
+<h4>Worked example — completion order ≠ output order</h4>
+<div class="timeline">
+  <div class="trow"><div class="tlabel">sub-1 (slow, 5s)</div><div class="tbar b-blue" style="width:250px">finishes 3rd</div></div>
+  <div class="trow"><div class="tlabel">sub-2 (medium, 3s)</div><div class="tbar b-green" style="width:150px">finishes 2nd</div></div>
+  <div class="trow"><div class="tlabel">sub-3 (fast, 1s)</div><div class="tbar b-amber" style="width:50px">1st</div></div>
+  <div class="axis"><div class="tlabel"></div><div class="ticks"><span>0s</span><span>2.5s</span><span>5s</span></div></div>
+</div>
+
+<table>
+  <tr><th>Collector step</th><th>What happens</th><th>Yielded</th></tr>
+  <tr><td><code>f = fs[0]</code> (sub-1)</td><td>Box empty → <b>blocks until t=5s</b>. Meanwhile sub-2 and sub-3 quietly fill their own boxes.</td><td>sub-1 result</td></tr>
+  <tr><td><code>f = fs[1]</code> (sub-2)</td><td>Box already full since t=3s → returns <b>instantly</b>, no waiting.</td><td>sub-2 result</td></tr>
+  <tr><td><code>f = fs[2]</code> (sub-3)</td><td>Box already full since t=1s → returns <b>instantly</b>.</td><td>sub-3 result</td></tr>
+</table>
+
+<pre><code><span class="c"># Completion order was:  sub-3, sub-2, sub-1</span>
+<span class="c"># But results is:</span>
+results = [
+    (keys_sub1, empty_sub1),   <span class="c"># from fs[0]  ← input position 0</span>
+    (keys_sub2, empty_sub2),   <span class="c"># from fs[1]  ← input position 1</span>
+    (keys_sub3, empty_sub3),   <span class="c"># from fs[2]  ← input position 2</span>
+]</code></pre>
+
+<div class="key">
+  <b>The one-sentence answer</b>
+  Finishing early only changes <b>when</b> a result becomes available — never <b>where</b> it is stored, because each result is written into its own pre-allocated <code>Future</code> at a fixed index in a list built at submission time.
+</div>
+
+<div class="note">
+  <b>Two useful corollaries</b>
+  <b>1.</b> Total wall-clock time for <code>list(map(...))</code> ≈ time of the <b>slowest</b> job (they overlap), <i>not</i> the first one.<br>
+  <b>2.</b> If you'd rather process results the moment they arrive (completion order), use <code>as_completed</code> instead — see §12.
+</div>
+
+
+<!-- ============================================================ -->
+<h2 id="tuple">8. Returning two values & unpacking them</h2>
+
+<h3>Python has no "two return values" — it has tuples</h3>
+<pre><code><span class="k">return</span> keys, empty_keys
+<span class="c"># The comma builds a tuple. This is IDENTICAL to:</span>
+<span class="k">return</span> (keys, empty_keys)
+<span class="c"># ONE object is returned. It happens to be a 2-element container.</span></code></pre>
+
+<h3>Case A — direct call → unpack once</h3>
+<pre><code>keys_pub, empty_keys_pub = self.kv_keys_api(<span class="s">'AzurePublicCloud'</span>)
+
+<span class="c"># right side evaluates to ONE tuple:  ([...keys...], [...empty...])</span>
+<span class="c"># two names on the left  =&gt; Python unpacks the tuple element-wise</span>
+<span class="c">#   keys_pub       = tuple[0]</span>
+<span class="c">#   empty_keys_pub = tuple[1]</span></code></pre>
+
+<h3>Case B — via <code>map</code> → a <i>list of</i> tuples → unpack repeatedly</h3>
+<pre><code>results = list(executor.map(...))
+
+<span class="c"># results is a LIST, each element is one call's tuple:</span>
+results = [
+    (keys1, empty1),
+    (keys2, empty2),
+    (keys3, empty3),
+]
+
+<span class="c"># You CANNOT do:  a, b = results        ← ValueError if len(results) != 2</span>
+<span class="c"># You unpack ONE ELEMENT AT A TIME:</span>
+<span class="k">for</span> k, ek <span class="k">in</span> results:
+    keys.extend(k)
+    empty_keys.extend(ek)</code></pre>
+
+<p>That loop is exactly equivalent to:</p>
+<pre><code><span class="k">for</span> item <span class="k">in</span> results:
+    k  = item[<span class="n">0</span>]   <span class="c"># the keys list from that subscription</span>
+    ek = item[<span class="n">1</span>]   <span class="c"># the empty-vault list from that subscription</span>
+    keys.extend(k)
+    empty_keys.extend(ek)</code></pre>
+
+<div class="note">
+  <b>So the pattern is the same in both cases</b>
+  Case A = "unpack a tuple, once". Case B = "unpack a tuple, N times (once per subscription)". <code>map</code> just produced N tuples instead of one.
+</div>
+
+<h3><code>append</code> vs <code>extend</code> — why <code>extend</code> is used</h3>
+<pre><code>keys = []
+k = [<span class="s">'a'</span>, <span class="s">'b'</span>]
+
+keys.append(k)   <span class="c"># =&gt; [['a','b']]        nested list — WRONG here</span>
+keys.extend(k)   <span class="c"># =&gt; ['a', 'b']          flattened — what we want</span></code></pre>
+<p>Each thread returns a <b>list</b> of key records. <code>extend</code> pours those records into the one master list, keeping it flat so <code>json.dumps</code> produces a single flat array.</p>
+
+
+<!-- ============================================================ -->
+<h2 id="trace">9. Full end-to-end trace of one run</h2>
+
+<p>Assume 3 subscriptions in <code>AzurePublicCloud</code>:</p>
+<ul>
+  <li><b>sub-1</b>: 2 vaults → vaultA has 3 keys, vaultB has 0 keys</li>
+  <li><b>sub-2</b>: 1 vault → vaultC has 5 keys</li>
+  <li><b>sub-3</b>: 1 vault → vaultD has 0 keys</li>
+</ul>
+
+<pre><code><span class="c">#### MAIN THREAD ####</span>
+kv_keys_api(<span class="s">'AzurePublicCloud'</span>)
+  keys = []            <span class="c"># master accumulators (main thread only)</span>
+  empty_keys = []
+
+  kvs = get_all_kvs(<span class="s">'AzurePublicCloud'</span>)
+  <span class="c"># =&gt; [ {sub-1,...}, {sub-2,...}, {sub-3,...} ]     ← 3 items</span>
+
+  args = [ ({sub-1},cloud), ({sub-2},cloud), ({sub-3},cloud) ]
+
+  executor.map(...)  → submits 3 jobs
+      fs[0] = Future(sub-1)
+      fs[1] = Future(sub-2)
+      fs[2] = Future(sub-3)
+
+<span class="c">#### WORKER THREADS (all running at the same time) ####</span>
+
+  [worker-1] process_keys({sub-1}, cloud) → keys_paginate
+      kv_client = KeyVaultClient().get_kv_client(<span class="s">'sub-1'</span>, cloud)   <span class="c"># its OWN client</span>
+      local keys=[] empty=[]
+      vaultA → keys.list() → 3 keys  → append 3 dicts to LOCAL keys
+      vaultB → keys.list() → []      → append 1 dict  to LOCAL empty
+      <span class="k">return</span> ([k1,k2,k3], [vaultB])            → written into fs[0]
+
+  [worker-2] process_keys({sub-2}, cloud) → keys_paginate
+      vaultC → 5 keys
+      <span class="k">return</span> ([k4,k5,k6,k7,k8], [])            → written into fs[1]
+
+  [worker-3] process_keys({sub-3}, cloud) → keys_paginate
+      vaultD → 0 keys
+      <span class="k">return</span> ([], [vaultD])                     → written into fs[2]
+
+<span class="c">#### BACK ON MAIN THREAD ####</span>
+  results = list(...)   <span class="c"># reads fs[0], fs[1], fs[2] in that order</span>
+  results = [
+      ([k1,k2,k3],        [vaultB]),
+      ([k4,k5,k6,k7,k8],  []      ),
+      ([],                [vaultD]),
+  ]
+
+  <span class="k">for</span> k, ek <span class="k">in</span> results:
+      iter 1: k=[k1,k2,k3]         ek=[vaultB]   → keys=[k1,k2,k3]            empty=[vaultB]
+      iter 2: k=[k4..k8]           ek=[]         → keys=[k1..k8]              empty=[vaultB]
+      iter 3: k=[]                 ek=[vaultD]   → keys=[k1..k8]              empty=[vaultB,vaultD]
+
+  <span class="k">return</span> keys, empty_keys      <span class="c"># =&gt; ([8 key dicts], [2 empty-vault dicts])</span>
+
+<span class="c">#### CALLER: get_kv_objects ####</span>
+keys_pub, empty_keys_pub = <span class="c"># ← unpacks that single returned tuple</span></code></pre>
+
+<div class="note">
+  <b>Why there's no race condition here</b>
+  Each worker builds its <b>own local</b> <code>keys</code>/<code>empty_keys</code> lists and returns them. Nothing is written to a shared list from inside a thread. Merging happens afterwards on the main thread only. This is the safest threading pattern — <b>share nothing, return everything</b>.
+</div>
+
+
+<!-- ============================================================ -->
+<h2 id="simulator">10. Interactive simulator</h2>
+<p>Click a button to simulate 5 subscriptions with random durations and watch how completion order differs from result order.</p>
+
+<div class="panel">
+  <button class="sim" onclick="runSim(false)">▶ Run with executor.map (ordered)</button>
+  <button class="sim alt" onclick="runSim(true)">▶ Run with as_completed (unordered)</button>
+  <button class="sim alt" onclick="document.getElementById('simlog').textContent=''">Clear</button>
+  <div id="simlog"></div>
+</div>
+
+<script>
+function log(msg){const el=document.getElementById('simlog');el.textContent+=msg+"\n";el.scrollTop=el.scrollHeight;}
+function runSim(unordered){
+  const el=document.getElementById('simlog'); el.textContent='';
+  const subs=[1,2,3,4,5].map(i=>({name:'sub-'+i,dur:+(0.5+Math.random()*4).toFixed(2),idx:i-1}));
+  log('Input order (submission order):');
+  subs.forEach(s=>log('  fs['+s.idx+'] = '+s.name+'   simulated duration '+s.dur+'s'));
+  log('');
+  log('--- workers start (all at t=0) ---');
+  const done=[...subs].sort((a,b)=>a.dur-b.dur);
+  done.forEach(s=>log('  t='+s.dur.toFixed(2)+'s  '+s.name+' FINISHED -> value stored in fs['+s.idx+']'));
+  log('');
+  const slowest=Math.max(...subs.map(s=>s.dur));
+  log('Wall clock total = '+slowest.toFixed(2)+'s  (the slowest job, not the sum '+
+      subs.reduce((a,s)=>a+s.dur,0).toFixed(2)+'s)');
+  log('');
+  if(unordered){
+    log('as_completed() -> yields in COMPLETION order:');
+    done.forEach(s=>log('   '+s.name));
+    log('');
+    log('NOTE: order changes every run. Use only when order does not matter.');
+  }else{
+    log('executor.map() -> walks fs[0..4] positionally, yields in INPUT order:');
+    subs.forEach(s=>log('   '+s.name+'   (was ready at t='+s.dur.toFixed(2)+'s)'));
+    log('');
+    log('NOTE: order is identical every run, regardless of who finished first.');
+  }
+}
+</script>
+
+
+<!-- ============================================================ -->
+<h2 id="scripts">11. Runnable practice scripts</h2>
+<p>Save these and run them — seeing the output makes it click. No Azure needed.</p>
+
+<h3>Script 1 — Sequential vs threaded (prove the speed-up)</h3>
+<pre><code><span class="c"># demo1_speed.py</span>
+<span class="k">import</span> time, concurrent.futures
+
+<span class="k">def</span> <span class="f">fake_api_call</span>(name, seconds):
+    print(<span class="s">f"  start  {name}"</span>)
+    time.sleep(seconds)             <span class="c"># sleep = pretend network wait (releases the GIL)</span>
+    print(<span class="s">f"  finish {name}"</span>)
+    <span class="k">return</span> <span class="s">f"data-from-{name}"</span>
+
+jobs = [(<span class="s">"sub-1"</span>, <span class="n">3</span>), (<span class="s">"sub-2"</span>, <span class="n">5</span>), (<span class="s">"sub-3"</span>, <span class="n">2</span>)]
+
+print(<span class="s">"=== SEQUENTIAL ==="</span>)
+t0 = time.time()
+seq = [fake_api_call(n, s) <span class="k">for</span> n, s <span class="k">in</span> jobs]
+print(<span class="s">f"took {time.time()-t0:.1f}s -&gt; {seq}\n"</span>)
+
+print(<span class="s">"=== THREADED ==="</span>)
+t0 = time.time()
+<span class="k">with</span> concurrent.futures.ThreadPoolExecutor() <span class="k">as</span> ex:
+    par = list(ex.map(<span class="k">lambda</span> a: fake_api_call(*a), jobs))
+print(<span class="s">f"took {time.time()-t0:.1f}s -&gt; {par}"</span>)</code></pre>
+<p class="muted">Expected: sequential ≈ 10s, threaded ≈ 5s, <b>and both lists are in the same order</b>.</p>
+
+<h3>Script 2 — Prove order is preserved (this is the §7 answer, live)</h3>
+<pre><code><span class="c"># demo2_order.py</span>
+<span class="k">import</span> time, concurrent.futures, threading
+
+<span class="k">def</span> <span class="f">work</span>(name, seconds):
+    time.sleep(seconds)
+    print(<span class="s">f"[{threading.current_thread().name}] {name} finished after {seconds}s"</span>)
+    <span class="k">return</span> name
+
+<span class="c"># sub-3 is fastest, sub-1 is slowest -&gt; completion order is REVERSED</span>
+jobs = [(<span class="s">"sub-1"</span>, <span class="n">3</span>), (<span class="s">"sub-2"</span>, <span class="n">2</span>), (<span class="s">"sub-3"</span>, <span class="n">1</span>)]
+
+<span class="k">with</span> concurrent.futures.ThreadPoolExecutor() <span class="k">as</span> ex:
+    results = list(ex.map(<span class="k">lambda</span> a: work(*a), jobs))
+
+print(<span class="s">"completion order was: sub-3, sub-2, sub-1"</span>)
+print(<span class="s">"results order is    :"</span>, results)
+<span class="c"># =&gt; ['sub-1', 'sub-2', 'sub-3']   ← INPUT order wins</span></code></pre>
+
+<h3>Script 3 — A miniature clone of <code>kv_keys_api</code></h3>
+<pre><code><span class="c"># demo3_mini_kv.py  — same shape as the real code, fake data</span>
+<span class="k">import</span> time, random, concurrent.futures
+
+<span class="c"># pretend get_all_kvs() returned this</span>
+kvs = [
+    {<span class="s">"subscriptionId"</span>: <span class="s">"sub-1"</span>, <span class="s">"tenantId"</span>: <span class="s">"t1"</span>, <span class="s">"vaults"</span>: [<span class="s">"vaultA"</span>, <span class="s">"vaultB"</span>]},
+    {<span class="s">"subscriptionId"</span>: <span class="s">"sub-2"</span>, <span class="s">"tenantId"</span>: <span class="s">"t1"</span>, <span class="s">"vaults"</span>: [<span class="s">"vaultC"</span>]},
+    {<span class="s">"subscriptionId"</span>: <span class="s">"sub-3"</span>, <span class="s">"tenantId"</span>: <span class="s">"t2"</span>, <span class="s">"vaults"</span>: [<span class="s">"vaultD"</span>, <span class="s">"vaultE"</span>, <span class="s">"vaultF"</span>]},
+]
+
+<span class="k">def</span> <span class="f">keys_paginate</span>(sub, cloud):
+    <span class="s">"""One worker's job: returns (keys, empty_vaults) for ONE subscription."""</span>
+    keys, empty = [], []
+    <span class="k">for</span> vault <span class="k">in</span> sub[<span class="s">"vaults"</span>]:
+        time.sleep(random.uniform(<span class="n">0.3</span>, <span class="n">1.2</span>))       <span class="c"># pretend keys.list() network call</span>
+        n = random.choice([<span class="n">0</span>, <span class="n">1</span>, <span class="n">2</span>, <span class="n">3</span>])
+        <span class="k">if</span> n == <span class="n">0</span>:
+            empty.append({<span class="s">"vault"</span>: vault, <span class="s">"sub"</span>: sub[<span class="s">"subscriptionId"</span>], <span class="s">"cloud"</span>: cloud})
+        <span class="k">else</span>:
+            <span class="k">for</span> i <span class="k">in</span> range(n):
+                keys.append({<span class="s">"name"</span>: <span class="s">f"{vault}-key{i}"</span>, <span class="s">"sub"</span>: sub[<span class="s">"subscriptionId"</span>]})
+    print(<span class="s">f"  {sub['subscriptionId']} done: {len(keys)} keys, {len(empty)} empty vaults"</span>)
+    <span class="k">return</span> keys, empty                              <span class="c"># ← ONE tuple</span>
+
+<span class="k">def</span> <span class="f">kv_keys_api</span>(cloud):
+    keys, empty_keys = [], []
+    <span class="k">with</span> concurrent.futures.ThreadPoolExecutor() <span class="k">as</span> ex:
+        results = list(ex.map(<span class="k">lambda</span> a: keys_paginate(*a), [(kv, cloud) <span class="k">for</span> kv <span class="k">in</span> kvs]))
+        print(<span class="s">"\nresults is a LIST of TUPLES:"</span>)
+        <span class="k">for</span> i, r <span class="k">in</span> enumerate(results):
+            print(<span class="s">f"  results[{i}] = (list of {len(r[0])} keys, list of {len(r[1])} empty)"</span>)
+        <span class="k">for</span> k, ek <span class="k">in</span> results:                     <span class="c"># unpack one tuple per iteration</span>
+            keys.extend(k)
+            empty_keys.extend(ek)
+    <span class="k">return</span> keys, empty_keys
+
+k, ek = kv_keys_api(<span class="s">"AzurePublicCloud"</span>)          <span class="c"># unpack the single returned tuple</span>
+print(<span class="s">f"\nTOTAL: {len(k)} keys, {len(ek)} empty vaults"</span>)</code></pre>
+
+<h3>Script 4 — See <code>*args</code> unpacking on its own</h3>
+<pre><code><span class="c"># demo4_star.py</span>
+<span class="k">def</span> <span class="f">greet</span>(name, greeting):
+    <span class="k">return</span> <span class="s">f"{greeting}, {name}!"</span>
+
+pair = (<span class="s">"Alice"</span>, <span class="s">"Hello"</span>)
+
+print(greet(*pair))                 <span class="c"># Hello, Alice!   ← * splits the tuple into 2 args</span>
+<span class="c"># print(greet(pair))                ← TypeError: missing 1 required argument</span>
+
+f = <span class="k">lambda</span> args: greet(*args)     <span class="c"># exactly the lambda used in kv_keys_api</span>
+print(list(map(f, [(<span class="s">"Bob"</span>, <span class="s">"Hi"</span>), (<span class="s">"Cara"</span>, <span class="s">"Hey"</span>)])))</code></pre>
+
+
+<!-- ============================================================ -->
+<h2 id="alternatives">12. <code>map</code> vs <code>submit</code> vs <code>as_completed</code></h2>
+
+<table>
+  <tr><th style="width:130px">Approach</th><th>Result order</th><th>Error behaviour</th><th>Best for</th></tr>
+  <tr>
+    <td><code>executor.map</code></td>
+    <td><b>Input order</b></td>
+    <td>First exception aborts the whole <code>list()</code></td>
+    <td>Same function over a uniform list, order matters. ✅ <i>what this code uses</i></td>
+  </tr>
+  <tr>
+    <td><code>submit</code> + <code>as_completed</code></td>
+    <td><b>Completion order</b></td>
+    <td>You handle each future's error individually</td>
+    <td>Streaming/progress reporting, resilience to per-job failures</td>
+  </tr>
+  <tr>
+    <td><code>submit</code> + index dict</td>
+    <td>You choose</td>
+    <td>Per-job, and you know <i>which</i> input failed</td>
+    <td>Best of both — recommended for production</td>
+  </tr>
+</table>
+
+<h3>Same work, three ways</h3>
+<pre><code><span class="c"># A) map — ordered, simple, all-or-nothing</span>
+<span class="k">with</span> ThreadPoolExecutor() <span class="k">as</span> ex:
+    results = list(ex.map(<span class="k">lambda</span> a: process_keys(*a), [(kv, cloud) <span class="k">for</span> kv <span class="k">in</span> kvs]))
+
+
+<span class="c"># B) as_completed — react as soon as each one lands</span>
+<span class="k">with</span> ThreadPoolExecutor() <span class="k">as</span> ex:
+    futures = [ex.submit(process_keys, kv, cloud) <span class="k">for</span> kv <span class="k">in</span> kvs]
+    <span class="k">for</span> fut <span class="k">in</span> concurrent.futures.as_completed(futures):   <span class="c"># finish order!</span>
+        k, ek = fut.result()
+        keys.extend(k); empty_keys.extend(ek)
+
+
+<span class="c"># C) submit + mapping — know WHICH input failed, keep going  ← recommended</span>
+<span class="k">with</span> ThreadPoolExecutor(max_workers=<span class="n">16</span>) <span class="k">as</span> ex:
+    future_to_sub = {ex.submit(process_keys, kv, cloud): kv[<span class="s">'subscriptionId'</span>] <span class="k">for</span> kv <span class="k">in</span> kvs}
+    <span class="k">for</span> fut <span class="k">in</span> concurrent.futures.as_completed(future_to_sub):
+        sub = future_to_sub[fut]
+        <span class="k">try</span>:
+            k, ek = fut.result()
+            keys.extend(k); empty_keys.extend(ek)
+        <span class="k">except</span> Exception <span class="k">as</span> e:
+            logging.error(<span class="s">f"subscription {sub} failed: {e}"</span>)   <span class="c"># others still complete</span></code></pre>
+
+
+<!-- ============================================================ -->
+<h2 id="pitfalls">13. Pitfalls in this code & how to improve</h2>
+
+<h3>⚠️ 1. Uneven work — parallelism is only per subscription</h3>
+<p>One subscription with 500 vaults runs all 500 sequentially in a single thread while other workers sit idle. <b>Fix:</b> flatten to one job per <i>vault</i>:</p>
+<pre><code><span class="c"># build a flat job list: one entry per vault</span>
+jobs = [
+    (sub[<span class="s">'subscriptionId'</span>], sub[<span class="s">'tenantId'</span>], grp[<span class="s">'resource_group'</span>], vault_id, cloud)
+    <span class="k">for</span> sub <span class="k">in</span> kvs
+    <span class="k">for</span> grp <span class="k">in</span> sub[<span class="s">'keyvaults'</span>]
+    <span class="k">for</span> vault_id <span class="k">in</span> grp[<span class="s">'id'</span>]
+]
+<span class="c"># now every vault is an independent unit of work -&gt; far better load balancing</span>
+<span class="c"># (cache the kv_client per subscription so you don't rebuild it per vault)</span></code></pre>
+
+<h3>⚠️ 2. Unbounded worker count / API throttling</h3>
+<p>Default workers scale with CPU count and each hammers the Azure API. Azure Resource Manager throttles at ~1200 reads/hour per subscription. <b>Fix:</b> pin it explicitly and tune.</p>
+<pre><code><span class="k">with</span> ThreadPoolExecutor(max_workers=<span class="n">16</span>) <span class="k">as</span> executor:   <span class="c"># deliberate, not accidental</span></code></pre>
+
+<h3>⚠️ 3. One failure kills the batch</h3>
+<p><code>keys_paginate</code> catches errors per-vault, which is good. But if anything escapes (e.g. a bug in the accumulation code), <code>list(executor.map(...))</code> re-raises it on the main thread and you lose <b>all</b> results collected so far. <b>Fix:</b> pattern C in §12.</p>
+
+<h3>⚠️ 4. No timeout — one hung call blocks everything</h3>
+<p><code>f.result()</code> waits forever by default. If one Azure call hangs, <code>list(...)</code> never returns and the Function times out. <b>Fix:</b></p>
+<pre><code>results = list(ex.map(fn, args, timeout=<span class="n">600</span>))   <span class="c"># raises TimeoutError instead of hanging</span></code></pre>
+
+<h3>⚠️ 5. Memory — everything is held in RAM at once</h3>
+<p>All keys from all subscriptions across both clouds are accumulated, then <code>json.dumps</code>'d into a single string for one SQL insert. With tens of thousands of records this can spike memory. <b>Fix:</b> batch the inserts.</p>
+
+<h3>✅ What this code does <i>right</i></h3>
+<ul>
+  <li><b>Share nothing</b> — each thread builds local lists and returns them; merging happens on the main thread. No locks needed, no race conditions.</li>
+  <li><b>One client per thread</b> — <code>KeyVaultClient()</code> is created inside the worker, avoiding shared-client thread-safety questions.</li>
+  <li><b>Per-vault try/except</b> — a single bad vault doesn't kill the subscription's whole scan.</li>
+  <li><b>Context manager</b> — <code>with ThreadPoolExecutor()</code> guarantees clean shutdown.</li>
+</ul>
+
+<div class="warn">
+  <b>The golden rule of threading</b>
+  Never mutate a shared list/dict from multiple threads without a <code>Lock</code>. This code avoids the problem entirely by returning values instead of writing to shared state — copy that habit.
+</div>
+
+
+<!-- ============================================================ -->
+<h2 id="cheat">14. Cheat sheet</h2>
+
+<div class="panel">
+<pre><code><span class="k">import</span> concurrent.futures, itertools
+
+<span class="c"># ── create a pool (always use `with`) ─────────────────────────────</span>
+<span class="k">with</span> concurrent.futures.ThreadPoolExecutor(max_workers=<span class="n">16</span>) <span class="k">as</span> ex:
+
+    <span class="c"># one arg per call</span>
+    results = list(ex.map(fn, items))
+
+    <span class="c"># two args, constant second arg</span>
+    results = list(ex.map(fn, items, itertools.repeat(cloud)))
+
+    <span class="c"># two args via tuples + lambda  (what this codebase uses)</span>
+    results = list(ex.map(<span class="k">lambda</span> a: fn(*a), [(i, cloud) <span class="k">for</span> i <span class="k">in</span> items]))
+
+    <span class="c"># fire one job, get a Future back</span>
+    fut = ex.submit(fn, arg1, arg2)
+    value = fut.result()               <span class="c"># blocks; re-raises worker exceptions</span>
+    value = fut.result(timeout=<span class="n">30</span>)     <span class="c"># or TimeoutError</span>
+
+    <span class="c"># process in completion order</span>
+    futs = [ex.submit(fn, i) <span class="k">for</span> i <span class="k">in</span> items]
+    <span class="k">for</span> f <span class="k">in</span> concurrent.futures.as_completed(futs):
+        ...
+<span class="c"># leaving the `with` block waits for ALL workers, then closes them</span></code></pre>
+</div>
+
+<table>
+  <tr><th style="width:280px">Question</th><th>Answer</th></tr>
+  <tr><td>Does <code>map</code> preserve order?</td><td><b>Yes</b> — always input order, regardless of finish times.</td></tr>
+  <tr><td>How many calls does <code>map</code> make?</td><td>Exactly <code>len(iterable)</code> — one per item.</td></tr>
+  <tr><td>Why <code>list(...)</code> around <code>map</code>?</td><td><code>map</code> returns a lazy generator; <code>list()</code> forces it to run and collect.</td></tr>
+  <tr><td>Why the <code>lambda</code>?</td><td><code>map</code> passes one item; <code>*args</code> splits that tuple into two parameters.</td></tr>
+  <tr><td>Does <code>return a, b</code> return two things?</td><td>No — one tuple <code>(a, b)</code>. Unpacking on assignment splits it.</td></tr>
+  <tr><td>How long does the whole thing take?</td><td>≈ the <b>slowest</b> job (if workers ≥ jobs), not the sum.</td></tr>
+  <tr><td>Threads or processes?</td><td>Waiting on network/disk → threads. Heavy CPU math → processes.</td></tr>
+  <tr><td>Is this code thread-safe?</td><td>Yes — each worker owns its data and returns it; no shared mutation.</td></tr>
+  <tr><td>What if a worker raises?</td><td><code>list(map(...))</code> re-raises it in the main thread and abandons the rest.</td></tr>
+</table>
+
+<p class="muted center" style="margin-top:40px">Reference doc for <code>AzKeyVaultObjects/keyvault_objects.py</code> · open this file in any browser.</p>
+
+</div>
+</body>
+</html>
