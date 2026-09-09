@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Git Stash, Pull --Rebase & Stash Pop — Reference</title>
+<style>
+  :root{
+    --bg:#f5f7fb; --card:#ffffff; --text:#172033; --muted:#5e6a7d;
+    --border:#e3e8f0; --accent:#2563eb; --accent2:#0f766e;
+    --warn:#b45309; --danger:#b91c1c; --code:#111827; --soft:#eef4ff;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:linear-gradient(135deg,#f8fafc 0%,#eef4ff 100%);
+    color:var(--text); font-family:Segoe UI,Arial,sans-serif; line-height:1.65;
+  }
+  .wrap{max-width:1050px;margin:0 auto;padding:42px 22px 60px}
+  .hero{
+    background:linear-gradient(135deg,#1d4ed8,#2563eb 55%,#0f766e);
+    color:white; border-radius:22px; padding:38px 38px 34px; box-shadow:0 18px 45px rgba(37,99,235,.18);
+  }
+  h1{margin:0 0 10px;font-size:34px;line-height:1.2}
+  .subtitle{margin:0;color:#e8f0ff;font-size:16px}
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:18px;
+    padding:26px; margin-top:22px; box-shadow:0 8px 25px rgba(15,23,42,.05)
+  }
+  h2{font-size:24px;margin:0 0 12px}
+  h3{font-size:19px;margin:0 0 8px}
+  p{margin:8px 0 14px}
+  .purpose{background:var(--soft); border-left:5px solid var(--accent); padding:14px 16px;border-radius:10px;margin:14px 0}
+  .memory{
+    background:#f0fdfa;border-left:5px solid var(--accent2);padding:13px 16px;border-radius:10px;margin-top:15px
+  }
+  code, pre{
+    font-family:Consolas,Monaco,monospace;
+  }
+  pre{
+    background:var(--code); color:#f8fafc; padding:17px 18px; border-radius:12px;
+    overflow:auto; margin:13px 0; font-size:14px;
+  }
+  .diagram{
+    background:#fbfcfe;border:1px dashed #cbd5e1;border-radius:12px;padding:15px 18px;
+    font-family:Consolas,Monaco,monospace; white-space:pre; overflow:auto;
+  }
+  .steps{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:16px}
+  .step{border:1px solid var(--border);border-radius:13px;padding:16px;background:#fcfdff}
+  .num{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-weight:700;margin-right:8px}
+  .warning{background:#fff7ed;border-left:5px solid #f59e0b;padding:15px 17px;border-radius:10px}
+  .danger{background:#fef2f2;border-left:5px solid #ef4444;padding:15px 17px;border-radius:10px}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{padding:13px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+  th{background:#f8fafc}
+  .tag{display:inline-block;padding:4px 9px;border-radius:999px;background:#e0e7ff;color:#3730a3;font-size:12px;font-weight:700}
+  .footer{text-align:center;color:var(--muted);font-size:13px;margin-top:28px}
+  @media(max-width:700px){.wrap{padding:22px 14px 40px}.hero{padding:28px 22px}.steps{grid-template-columns:1fr}h1{font-size:28px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section class="hero">
+    <h1>Git Stash, Pull --Rebase &amp; Stash Pop</h1>
+    <p class="subtitle">Beginner-friendly reference for resolving a rejected Git push</p>
+  </section>
+
+  <section class="card">
+    <h2>Your Situation</h2>
+    <p>Your local branch has committed changes, the remote <b>feature1</b> branch has newer commits, and you also have unstaged changes.</p>
+    <div class="purpose"><b>Goal:</b> Safely protect your unfinished work, update your branch with the remote changes, push your committed work, and then restore the unfinished work.</div>
+  </section>
+
+  <section class="card">
+    <h2>1. <code>git stash</code></h2>
+    <div class="purpose"><b>Purpose:</b> Temporarily saves your <b>uncommitted changes</b> and makes your working directory clean.</div>
+    <pre>git stash</pre>
+    <h3>Example</h3>
+    <div class="diagram">Committed:
+  file1.py
+
+Uncommitted:
+  file2.py  (changed but not committed)</div>
+    <p>After running <code>git stash</code>, the <code>file2.py</code> changes are stored temporarily in Git and your working directory becomes clean.</p>
+    <div class="memory"><b>Easy memory:</b> “Put my unfinished work safely in a temporary box.”</div>
+  </section>
+
+  <section class="card">
+    <h2>2. <code>git pull --rebase origin feature1</code></h2>
+    <div class="purpose"><b>Purpose:</b> Gets the latest commits from the remote Azure DevOps <b>feature1</b> branch and places your local commits on top of those remote commits.</div>
+    <pre>git pull --rebase origin feature1</pre>
+    <p><b>Think of it as two steps:</b></p>
+    <div class="steps">
+      <div class="step"><span class="num">1</span><b>Pull</b><br>Download the latest remote commits.</div>
+      <div class="step"><span class="num">2</span><b>Rebase</b><br>Reapply your local commits after the latest remote commits.</div>
+    </div>
+    <h3 style="margin-top:20px">Example before rebase</h3>
+    <div class="diagram">Remote:  A -- B -- C
+Local:   A -- B -- D</div>
+    <h3>After rebase</h3>
+    <div class="diagram">A -- B -- C -- D</div>
+    <div class="memory"><b>Easy memory:</b> “First get the latest remote code, then place my commits on top.”</div>
+    <p style="margin-top:16px"><span class="tag">Why?</span> This is useful when your push is rejected with <code>rejected (fetch first)</code> because the remote branch contains commits you do not yet have locally.</p>
+  </section>
+
+  <section class="card">
+    <h2>3. <code>git stash pop</code></h2>
+    <div class="purpose"><b>Purpose:</b> Restores the uncommitted changes that you previously saved with <code>git stash</code>.</div>
+    <pre>git stash pop</pre>
+    <div class="memory"><b>Easy memory:</b> “Take my unfinished work back out of the temporary box.”</div>
+    <h3 style="margin-top:20px">Example</h3>
+    <div class="diagram">Before stash:
+  Committed:   file1.py
+  Uncommitted: file2.py changes
+
+After git stash:
+  Working directory: clean
+  Stash: file2.py changes
+
+After git pull --rebase:
+  Branch updated with latest remote commits
+
+After git stash pop:
+  file2.py changes are restored as uncommitted changes</div>
+  </section>
+
+  <section class="card">
+    <h2>4. Your Exact Workflow</h2>
+    <pre>git status
+git stash
+git pull --rebase origin feature1
+git push origin feature1
+git stash pop</pre>
+
+    <table>
+      <thead>
+        <tr><th>Command</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>git status</code></td><td>Shows whether you have uncommitted or staged changes.</td></tr>
+        <tr><td><code>git stash</code></td><td>Temporarily protects your current uncommitted changes.</td></tr>
+        <tr><td><code>git pull --rebase origin feature1</code></td><td>Brings the latest remote changes and reapplies your local commits on top.</td></tr>
+        <tr><td><code>git push origin feature1</code></td><td>Pushes your now-up-to-date local branch to Azure DevOps.</td></tr>
+        <tr><td><code>git stash pop</code></td><td>Restores the changes you temporarily stashed.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>5. Important Point After <code>stash pop</code></h2>
+    <p>The changes restored by <code>git stash pop</code> are <b>uncommitted again</b>.</p>
+    <p>If you want to save them permanently in Git and push them, review and commit them:</p>
+    <pre>git status
+git add .
+git commit -m "your message"
+git push origin feature1</pre>
+  </section>
+
+  <section class="card">
+    <h2>6. What NOT to Do</h2>
+    <div class="danger">
+      <b>Do not use <code>git push --force</code> just to solve a fetch-first rejection</b> unless you are certain the remote commits should be overwritten.
+      A force push can remove other people's commits from the remote branch.
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Quick Memory Table</h2>
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Simple meaning</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>git stash</code></td><td>Put unfinished work aside temporarily.</td></tr>
+        <tr><td><code>git pull --rebase</code></td><td>Get the latest remote work and place my commits on top.</td></tr>
+        <tr><td><code>git push</code></td><td>Send my commits to the remote branch.</td></tr>
+        <tr><td><code>git stash pop</code></td><td>Bring my unfinished work back.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="footer">Git reference • Azure DevOps feature1 workflow</div>
+</div>
+</body>
+</html>
