@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Container Apps SDK Concepts</title>
+  <style>
+    :root {
+      --bg: #f7f9fc;
+      --card: #ffffff;
+      --text: #1a2330;
+      --muted: #5c6b80;
+      --accent: #0b6aa2;
+      --line: #d9e1ec;
+      --code-bg: #0f1722;
+      --code-text: #d5e6ff;
+      --ok: #0f8a5f;
+      --warn: #b76e00;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(180deg, #eef4ff 0%, var(--bg) 35%, var(--bg) 100%);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 28px 18px 60px;
+    }
+
+    .hero {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 22px;
+      box-shadow: 0 8px 28px rgba(10, 30, 60, 0.08);
+      margin-bottom: 18px;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 10px;
+      line-height: 1.3;
+    }
+
+    h1 { font-size: 1.7rem; }
+    h2 { font-size: 1.25rem; margin-top: 22px; }
+    h3 { font-size: 1.05rem; margin-top: 14px; }
+
+    p { margin: 8px 0; }
+
+    .muted { color: var(--muted); }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      margin-top: 14px;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 0.84rem;
+      border: 1px solid var(--line);
+      background: #f2f7ff;
+      color: var(--accent);
+      margin-right: 6px;
+    }
+
+    pre {
+      margin: 10px 0 0;
+      background: var(--code-bg);
+      color: var(--code-text);
+      border-radius: 10px;
+      padding: 12px;
+      overflow-x: auto;
+      border: 1px solid #213247;
+      font-size: 0.9rem;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+    }
+
+    ul {
+      margin: 8px 0 0 18px;
+      padding: 0;
+    }
+
+    li { margin: 4px 0; }
+
+    .good { color: var(--ok); font-weight: 600; }
+    .warn { color: var(--warn); font-weight: 600; }
+
+    .flow {
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fbfdff;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 640px) {
+      h1 { font-size: 1.45rem; }
+      .container { padding: 16px 12px 40px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <section class="hero">
+      <h1>Composition vs Inheritance and Azure Container Apps SDK</h1>
+      <p class="muted">Simple reference for future use in the request-handler project.</p>
+      <span class="tag">Python OOP</span>
+      <span class="tag">Azure SDK</span>
+      <span class="tag">Container Apps</span>
+    </section>
+
+    <section class="card">
+      <h2>Quick Takeaway (Main Concept)</h2>
+      <p>This is the exact idea: the main SDK client <strong>has</strong> operation groups as attributes. You use those attributes to call methods.</p>
+      <pre><code># Composition (has-a): main client HAS operation groups
+class ContainerAppsAPIClient:
+    def __init__(self, credential, subscription_id):
+        self.container_apps = ContainerAppsOperations()      # has-a
+        self.jobs = JobsOperations()                         # has-a
+        self.vnet_connections = VnetConnectionsOperations()  # has-a
+
+
+# Not inheritance in your usage:
+# class ContainerAppsOperations(ContainerAppsAPIClient):
+#     pass
+
+
+client = ContainerAppsAPIClient(credential=cred, subscription_id=sub_id)
+
+# Access composed object, then call method
+client.container_apps.get("rg", "app-name")
+client.container_apps.begin_create_or_update("rg", "app-name", payload)
+client.jobs.list_by_resource_group("rg")</code></pre>
+      <p><span class="good">Meaning:</span> ContainerAppsAPIClient is the top-level object, and container_apps/jobs are sub-objects attached to it.</p>
+    </section>
+
+    <section class="card">
+      <h2>1) Core OOP Concepts</h2>
+
+      <h3>Composition (has-a)</h3>
+      <p>A class keeps another class object as one of its fields/attributes.</p>
+      <pre><code>class EngineOperations:
+    def start(self):
+        print("Engine started")
+
+class Car:
+    def __init__(self):
+        self.engine = EngineOperations()  # has-a relationship
+
+car = Car()
+car.engine.start()</code></pre>
+
+      <h3>Inheritance (is-a)</h3>
+      <p>A class extends another class.</p>
+      <pre><code>class Vehicle:
+    def move(self):
+        print("Moving")
+
+class SportsCar(Vehicle):  # is-a relationship
+    pass
+
+s = SportsCar()
+s.move()</code></pre>
+
+      <p><span class="good">Key point:</span> The SDK usage discussed here is composition, not inheritance.</p>
+    </section>
+
+    <section class="card">
+      <h2>2) How ContainerAppsAPIClient Uses Composition</h2>
+      <p>The main client object exposes operation groups as attributes:</p>
+      <ul>
+        <li>container_apps</li>
+        <li>container_apps_revisions</li>
+        <li>jobs</li>
+        <li>managed_environments</li>
+      </ul>
+
+      <pre><code>from azure.identity import DefaultAzureCredential
+from azure.mgmt.appcontainers import ContainerAppsAPIClient
+
+sub_id = "00000000-0000-0000-0000-000000000000"
+client = ContainerAppsAPIClient(
+    credential=DefaultAzureCredential(),
+    subscription_id=sub_id
+)
+
+# Composition access: client HAS these operation groups
+app = client.container_apps.get("my-rg", "my-app")
+revisions = client.container_apps_revisions.list_revisions("my-rg", "my-app")
+jobs = client.jobs.list_by_resource_group("my-rg")</code></pre>
+
+      <div class="flow">
+        <strong>Flow:</strong>
+        <ol>
+          <li>Create credential object</li>
+          <li>Create SDK client with credential + subscription id</li>
+          <li>Access operation-group attribute (for example client.container_apps)</li>
+          <li>Call method on operation-group (for example get or begin_create_or_update)</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3) Public Cloud vs China Cloud Client Setup</h2>
+      <p>Public cloud usually needs only credential + subscription id. China cloud typically adds authority and endpoint details.</p>
+
+      <pre><code>from azure.identity import DefaultAzureCredential, AzureAuthorityHosts
+from azure.mgmt.appcontainers import ContainerAppsAPIClient
+from msrestazure.azure_cloud import AZURE_CHINA_CLOUD as CHINA
+
+# Public cloud
+public_client = ContainerAppsAPIClient(
+    credential=DefaultAzureCredential(),
+    subscription_id="sub-id"
+)
+
+# China cloud
+endpoint = CHINA.endpoints.resource_manager
+china_client = ContainerAppsAPIClient(
+    credential=DefaultAzureCredential(authority=AzureAuthorityHosts.AZURE_CHINA),
+    subscription_id="sub-id",
+    base_url=endpoint,
+    credential_scopes=[endpoint + "/.default"]
+)</code></pre>
+
+      <p><span class="warn">Why base_url and credential_scopes?</span> They align API endpoint and token audience for sovereign cloud environments.</p>
+    </section>
+
+    <section class="card">
+      <h2>4) What "Authenticated Client" Means</h2>
+      <ul>
+        <li>You instantiate ContainerAppsAPIClient once with a credential.</li>
+        <li>Each call through that client uses the SDK auth pipeline automatically.</li>
+        <li>Token is fetched and cached by the credential implementation.</li>
+      </ul>
+
+      <pre><code># Same authenticated client used for all calls
+client.container_apps.get("rg", "app")
+client.container_apps.begin_create_or_update("rg", "app", payload)
+client.container_apps.begin_delete("rg", "app")</code></pre>
+    </section>
+  </main>
+</body>
+</html>
