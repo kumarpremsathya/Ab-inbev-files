@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cloud Management – Request Flow (SERVICEBUSQUEUE)</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 30px auto; max-width: 1200px; color: #222; line-height: 1.5; }
+  h1 { border-bottom: 3px solid #0078d4; padding-bottom: 6px; }
+  h2 { color: #0078d4; margin-top: 36px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  code { background: #f3f3f3; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; }
+  pre { background: #1e1e1e; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-family: Consolas, monospace; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 8px 10px; vertical-align: top; text-align: left; }
+  th { background: #0078d4; color: #fff; }
+  tr:nth-child(even) td { background: #f8f9fb; }
+  .note { background: #fff4ce; border-left: 4px solid #ffb900; padding: 10px 14px; margin: 14px 0; }
+  pre.mermaid { background: #fff; color: #222; border: 1px solid #ddd; border-radius: 6px; padding: 10px; font-family: Segoe UI, Arial, sans-serif; }
+  .num { display: inline-block; background: #0078d4; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; font-weight: bold; font-size: 13px; line-height: 22px; }
+</style>
+</head>
+<body>
+
+<h1>Cloud Management – Request Flow (SERVICEBUSQUEUE)</h1>
+<p>End-to-end path of a catalog request in <code>abi_cloud_mgmt</code>, from the HTTP receiver to the Service Bus <code>request_handler</code> topic, and how to test each step separately.</p>
+<ul>
+  <li><a href="#step1">Step 1 – Receiver → <code>tblEventMaster</code></a></li>
+  <li><a href="#step2">Step 2 – Master → <code>tblActivityAzServiceBusQueue</code> + <code>tblEventPendingActivity</code></a></li>
+  <li><a href="#step3">Step 3 – Pending → publish to Service Bus</a></li>
+</ul>
+
+<h2>Overview</h2>
+<pre class="mermaid">
+flowchart LR
+    A[POST test_request_receiver] --> B[(tblEventMaster - Pending Approval)]
+    B -- Step 2: NewActivity.check_db_for_new_activity --> C[(tblActivityAzServiceBusQueue - In-Progress)]
+    B -- Step 2 --> D[(tblEventPendingActivity)]
+    D -- Step 3: PendingActivity.get_next_pending_activity --> E[Processor.queue_processor]
+    C -- rows In-Progress or Retry --> E
+    E --> F[[Service Bus topic request_handler]]
+    F --> G[abi-mc-az-requesthandler app]
+    G -. sets Status Success or Failed .-> C
+    E -. no rows left In-Progress or Retry .-> H[(tblEventCompletedActivity)]
+</pre>
+<p>Steps 2 and 3 both run through <code>RequestProcessor.process_request()</code>, triggered by the <code>request_processor</code> timer (every 3 min) or manually via <code>test_processor</code>.</p>
+
+<h1 id="step1">Step 1 – Receiver → <code>tblEventMaster</code></h1>
+<p>Entry point: <code>test_request_receiver</code> in <code>function_app.py</code>.
+Result: one row in <code>tblEventMaster</code> with <code>Status = 'Pending Approval'</code> and a RITM created in ServiceNow.</p>
+
+<h2>1.1 What to comment / uncomment for Step 1</h2>
+<table>
+  <tr><th>Action</th><th>File</th><th>Details</th></tr>
+  <tr><td><b>Leave on</b></td><td><code>function_app.py</code></td><td><code>test_request_receiver</code> (HTTP, anonymous). It already skips Service Bus: it sets <code>message_id = uuid4()</code> and calls <code>RequestReceiver().request_initilize(data)</code> directly.</td></tr>
+  <tr><td><b>Check</b></td><td><code>RequestReceiver/RequestReceiver.py</code></td><td>The <code>SnowRequest().create(...)</code> call creates a <b>real RITM</b>. If you don't want that, stub it for testing. The row must still have <code>SnowId</code>, <code>SnowItemId</code>, <code>SnowItemStatusCode</code> and <code>SnowItemStatus</code>, because <code>event_db_insert</code> needs them.</td></tr>
+  <tr><td><b>Check</b></td><td><code>RequestReceiver/ActivityNames/AzActivityNames.py</code></td><td>The Request case calls <code>AzActivityNames().get_activity_type_data(data)</code>. Make sure <code>case "SERVICEBUSQUEUE"</code> is uncommented there (it is).</td></tr>
+  <tr><td><b>Verify</b></td><td>SQL</td><td><code>SELECT * FROM tblEventMaster ORDER BY EventId DESC</code>. You should see the row with Status <code>Pending Approval</code>.</td></tr>
+</table>
+
+<h3>Step 1 test flow</h3>
+<pre class="mermaid">
+flowchart TD
+    A[Start func host locally] --> B[POST to /api/test_request_receiver]
+    B --> C{payload.cloud is Azure?}
+    C -- No --> X1[UnboundLocalError]
+    C -- Yes --> D{ActivityName is SERVICEBUSQUEUE and case uncommented?}
+    D -- No --> X2[AttributeError: no request_data]
+    D -- Yes --> E[AzServiceBusQueue.snow_data builds SNOW fields]
+    E --> F{ActivityType is Request?}
+    F -- Yes --> G[SnowRequest.create - real RITM, or stub for testing]
+    G --> H[event_db_insert with Status Pending Approval]
+    H --> I[(tblEventMaster)]
+    I --> J[Verify with SELECT query]
+    J --> K[HTTP 200 Done. SnowItemId RITMxxxx]
+</pre>
+
+<h2>1.2 Call chain (sequence diagram)</h2>
+<pre class="mermaid">
+sequenceDiagram
+    participant U as Postman or curl
+    participant F as test_request_receiver (function_app.py)
+    participant R as RequestReceiver.request_initilize
+    participant A as AzActivityNames.get_activity_type_data
+    participant Q as AzServiceBusQueue.snow_data
+    participant S as SnowRequest.create
+    participant SN as ServiceNow API
+    participant D as event_db_insert and DB.executescalar
+    participant DB as tblEventMaster
+
+    U->>F: POST JSON body
+    F->>F: data.message_id = uuid4()
+    F->>R: request_initilize(data)
+    R->>A: get_activity_type_data(data) when cloud is Azure
+    A->>Q: snow_data(data) when ActivityName is SERVICEBUSQUEUE
+    Q-->>A: (1) return request_data - same dict plus description, variables
+    A-->>R: (2) return self.request_data as activity_type_data
+    R->>S: create(activity_type_data) when ActivityType is Request
+    S->>SN: get user, create_request, upload attachment
+    SN-->>S: snow_req, snow_ritm
+    S-->>R: (3) return data plus SnowId, SnowItemId, statuses
+    R->>D: event_db_insert(self.data) with status Pending Approval
+    D->>DB: MERGE ... OUTPUT inserted.EventId
+    DB-->>D: EventId
+    D-->>R: (4) return eventid
+    R-->>F: (5) return self.data.SnowItemId
+    F-->>U: (6) HTTP 200 - Done. SnowItemId RITMxxxx
+</pre>
+
+<h2>1.3 Each return statement</h2>
+<table>
+  <tr><th>#</th><th>Where</th><th>What is returned</th><th>What it adds / means</th></tr>
+  <tr>
+    <td><span class="num">1</span></td>
+    <td><code>Catalog/Azure/ServiceBusQueue/ServiceBusQueue.py</code><br><code>snow_data</code> → <code>return self.request_data</code></td>
+    <td>The <b>same</b> <code>data</code> dict (<code>self.request_data = data</code> is a reference, not a copy)</td>
+    <td>Adds <code>short_description</code>, <code>description</code>, <code>business_service</code>, <code>variables</code> (SNOW form fields) and <code>payload["action"]</code>. Step 2 reads <code>action</code> back from <code>tblEventMaster.Payload</code>.</td>
+  </tr>
+  <tr>
+    <td><span class="num">2</span></td>
+    <td><code>RequestReceiver/ActivityNames/AzActivityNames.py</code><br><code>return self.request_data</code></td>
+    <td>The dict from ①</td>
+    <td>Pure router that picks a catalog class by <code>ActivityName</code>. Stored as <code>activity_type_data</code> in <code>RequestReceiver</code>.</td>
+  </tr>
+  <tr>
+    <td><span class="num">3</span></td>
+    <td><code>ServiceNow/SnowRequest.py</code><br><code>create</code> → <code>return data</code></td>
+    <td>The same dict again</td>
+    <td>Adds <code>SnowId</code> (REQ number), <code>SnowStatusCode</code>, <code>SnowStatus</code>, <code>SnowItemId</code> (RITM number), <code>SnowItemStatusCode</code>, <code>SnowItemStatus</code>. Uploads the data to the RITM as a JSON attachment.</td>
+  </tr>
+  <tr>
+    <td><span class="num">4</span></td>
+    <td><code>RequestReceiver/RequestReceiver.py</code><br><code>event_db_insert</code> → <code>return self.objdb.executescalar(...)</code></td>
+    <td><code>EventId</code> (int)</td>
+    <td>Comes from <code>OUTPUT inserted.EventId</code> in the MERGE. <code>DB.executescalar</code> with <code>action="eventinsert"</code> returns <code>fetchone()[0]</code> and commits. In the Request path it is only used by the commented-out email.</td>
+  </tr>
+  <tr>
+    <td><span class="num">5</span></td>
+    <td><code>request_initilize</code> → <code>return self.data["SnowItemId"]</code></td>
+    <td>RITM number string</td>
+    <td>Final value of Step 1.</td>
+  </tr>
+  <tr>
+    <td><span class="num">6</span></td>
+    <td><code>test_request_receiver</code> → <code>func.HttpResponse(f"Done. SnowItemId: {snow_tkt}")</code></td>
+    <td>HTTP 200</td>
+    <td>What you see in Postman.</td>
+  </tr>
+</table>
+<div class="note"><b>Key point:</b> (1), (2) and (3) all return <b>one and the same dict object</b>, enriched as it passes through. What gets written to <code>tblEventMaster</code> is the original request plus everything each layer added.</div>
+
+<h2>1.4 How <code>data</code> grows</h2>
+<pre>
+Your POST body
+ ├─ ActivityName, ActivityType, RequestorEmail, OID, zone, action
+ └─ payload { cloud, justification, devowners, data{subscription_*, resource_group_name, namespace_name, queue_name, queue_properties, zone} }
++ message_id                                   ← test_request_receiver
++ short_description, description, variables,
+  business_service, payload.action             ← snow_data       (①)
++ SnowId, SnowItemId, SnowItemStatusCode,
+  SnowItemStatus, SnowStatus, SnowStatusCode   ← SnowRequest     (③)
+        ↓
+tblEventMaster row (Status='Pending Approval') → EventId (④)
+</pre>
+
+<h2>1.5 Sample body for <code>test_request_receiver</code></h2>
+<p><code>zone</code> is read both at the top level and inside <code>payload.data</code>; <code>action</code> is read at the top level.</p>
+<pre>
+{
+  "ActivityName": "SERVICEBUSQUEUE",
+  "ActivityType": "Request",
+  "RequestorEmail": "you@ab-inbev.com",
+  "OID": "&lt;your-aad-object-id&gt;",
+  "zone": "GHQ",
+  "action": "Create",
+  "payload": {
+    "cloud": "Azure",
+    "justification": "Testing",
+    "devowners": "you@ab-inbev.com",
+    "data": {
+      "zone": "GHQ",
+      "subscription_id": "&lt;sub-id&gt;",
+      "subscription_name": "&lt;sub-name&gt;",
+      "resource_group_name": "&lt;rg&gt;",
+      "namespace_name": "&lt;sb-namespace&gt;",
+      "queue_name": "test-queue",
+      "queue_properties": { "max_size_in_megabytes": 1024 }
+    }
+  }
+}
+</pre>
+
+<h2>1.6 Places where Step 1 can fail</h2>
+<table>
+  <tr><th>Condition</th><th>Result</th></tr>
+  <tr><td><code>ActivityName</code> doesn't match a case in <code>AzActivityNames</code></td><td><code>self.request_data</code> is never set → ② raises <code>AttributeError</code></td></tr>
+  <tr><td><code>payload.cloud</code> isn't <code>Azure</code>, <code>Gcp</code> or <code>Aws</code></td><td><code>activity_type_data</code> unbound → <code>UnboundLocalError</code></td></tr>
+  <tr><td>Missing top-level <code>zone</code></td><td><code>SnowRequest.create</code> and <code>event_db_insert</code> raise <code>KeyError</code></td></tr>
+  <tr><td>Missing top-level <code>action</code></td><td><code>payload.action</code> stored as <code>""</code>; step 2 inserts an empty <code>Action</code></td></tr>
+  <tr><td>MERGE matches an existing row</td><td>Nothing inserted, <code>fetchone()</code> returns <code>None</code>, <code>None[0]</code> → <code>TypeError</code>. Won't happen via the test endpoint (fresh <code>uuid4()</code> each time).</td></tr>
+  <tr><td>Real SNOW calls</td><td>③ creates a real REQ/RITM in ServiceNow on every test call.</td></tr>
+</table>
+
+<h2>1.7 Check that Step 1 worked</h2>
+<pre>
+SELECT TOP 1 EventId, MessageId, ActivityName, ActivityType, SnowId, SnowItemId, Status, Payload
+FROM tblEventMaster
+WHERE ActivityName = 'SERVICEBUSQUEUE'
+ORDER BY EventId DESC;
+</pre>
+<p>Expected: <code>Status = 'Pending Approval'</code>, a RITM number in <code>SnowItemId</code>, and <code>Payload</code> JSON containing <code>"action"</code>.</p>
+
+<!-- ===================================================== STEP 2 ===================================================== -->
+<h1 id="step2">Step 2 – Master → <code>tblActivityAzServiceBusQueue</code></h1>
+<p>Entry point: <code>test_processor</code> → <code>RequestProcessor.process_request()</code> → <code>NewActivity.check_db_for_new_activity()</code>.
+Result: one row in <code>tblActivityAzServiceBusQueue</code> (Status <code>In-Progress</code>), one row in <code>tblEventPendingActivity</code>, and <code>tblEventMaster.Status = 'In-Progress'</code>.</p>
+
+<h2>2.1 What to comment / uncomment for Step 2</h2>
+<table>
+  <tr><th>Action</th><th>File</th><th>Details</th></tr>
+  <tr><td><b>Uncomment</b></td><td><code>function_app.py</code></td><td>The <code>test_processor</code> route (decorator + 3 lines) at the bottom of the file.</td></tr>
+  <tr><td><b>Uncomment</b></td><td><code>RequestProcessor/RequestProcessor.py</code></td><td><code>await NewActivity().check_db_for_new_activity()</code></td></tr>
+  <tr><td><b>Comment out</b></td><td><code>RequestProcessor/RequestProcessor.py</code></td><td><code>await PendingActivity().get_next_pending_activity()</code>, so only Step 2 runs.</td></tr>
+  <tr><td><b>Extend bypass</b></td><td><code>RequestProcessor/ActivityType/NewActivity.py</code></td><td>The SNOW bypass in the <code>'Request'</code> case exists only for <code>RESOURCETAGUPDATE</code>. Extend it:
+<pre>if dataset.ActivityName in ('RESOURCETAGUPDATE', 'SERVICEBUSQUEUE'):  # TEST MODE: remove before deploy
+    snow_ritm = {'stage': 'request_approved', 'state': '2', 'approval': 'approved'}</pre>
+  Without it, the row stays <code>Pending Approval</code> until the RITM is really approved in ServiceNow.</td></tr>
+  <tr><td><b>Check</b></td><td><code>RequestProcessor/PayloadDeserializer/AzPayloadDeserializer.py</code></td><td><code>case "SERVICEBUSQUEUE"</code> must be uncommented (it is).</td></tr>
+  <tr><td><b>Check</b></td><td><code>tblEventMaster</code> row from Step 1</td><td><code>get_new_activity</code> only picks rows where <code>Status = 'Pending Approval'</code> <b>and</b> (<code>SnowItemStatusCode</code>, <code>SnowItemStatus</code>) is one of: (<code>-5</code>, <code>waiting_for_approval</code>), (<code>2</code>/<code>8</code>, <code>request_approved</code>), (<code>-4</code>, <code>Approval</code>). If SNOW returned something else in Step 1, the row is never picked.</td></tr>
+  <tr><td><b>Be aware</b></td><td><code>function_app.py</code></td><td>The <code>request_processor</code> timer (every 3 min) also calls <code>process_request()</code> and will run whatever you enabled. Disable it while testing if you want full control.</td></tr>
+  <tr><td><b>Verify</b></td><td>SQL</td><td>See 2.6.</td></tr>
+</table>
+
+<h3>Step 2 test flow</h3>
+<pre class="mermaid">
+flowchart TD
+    A[GET or POST /api/test_processor] --> B[process_request runs NewActivity only]
+    B --> C[get_new_activity selects tblEventMaster]
+    C --> D{Row matches Status and SNOW code filter?}
+    D -- No --> X1[Row not picked - nothing happens]
+    D -- Yes --> E[snow_get_ritm_status SnowItemId]
+    E --> F[TEST MODE bypass sets snow_ritm to approved]
+    F --> G{snow_ritm empty?}
+    G -- Yes --> X2[Warning logged - skipped]
+    G -- No --> H{stage request_approved and state 2 or 8 and approval approved?}
+    H -- No, rejected or cancelled or closed --> X3[Master status updated to that status]
+    H -- No, still waiting --> X4[Nothing changes - picked again next run]
+    H -- Yes --> I[AzPayloadDeserializer.deserialize]
+    I --> J[AzServiceBusQueue.activity_data]
+    J --> K[(tblActivityAzServiceBusQueue - In-Progress)]
+    J --> L[(tblEventPendingActivity)]
+    L --> M[update_activity_master_status]
+    M --> N[(tblEventMaster - In-Progress)]
+</pre>
+
+<h2>2.2 Call chain (sequence diagram)</h2>
+<pre class="mermaid">
+sequenceDiagram
+    participant T as test_processor (function_app.py)
+    participant P as RequestProcessor.process_request
+    participant N as NewActivity.check_db_for_new_activity
+    participant M as DbActivityManager
+    participant SR as SnowRequest.snow_get_ritm_status
+    participant Z as AzPayloadDeserializer.deserialize
+    participant Q as AzServiceBusQueue.activity_data
+    participant EM as tblEventMaster
+    participant AT as tblActivityAzServiceBusQueue
+    participant PA as tblEventPendingActivity
+
+    T->>P: process_request()
+    P->>N: check_db_for_new_activity()
+    N->>M: get_new_activity()
+    M->>EM: SELECT rows Pending Approval with matching SNOW code
+    EM-->>M: rows
+    M-->>N: (1) return datasets
+    loop each dataset with ActivityType Request
+        N->>SR: snow_get_ritm_status(SnowItemId)
+        SR-->>N: (2) return snow_ritm
+        Note over N: TEST MODE bypass overwrites snow_ritm with stage request_approved, state 2, approval approved
+        alt approved
+            N->>Z: deserialize(dataset) when Cloud is Azure
+            Z->>Q: activity_data(dataset) when ActivityName is SERVICEBUSQUEUE
+            Q->>Q: json.loads(dataset.Payload)
+            Q->>AT: MERGE insert, Status In-Progress, RetryAttemptedAt now
+            Q->>M: insert_activity_pending(dataset)
+            M->>PA: MERGE insert EventId, ActivityName, RetryAttemptedAt now
+            Q-->>Z: (3) return None
+            Z-->>N: (4) return None
+            N->>M: update_activity_master_status(dataset, 2, request_approved, In-Progress)
+            M->>EM: UPDATE Status In-Progress
+        else rejected or cancelled or closed
+            N->>M: update_activity_master_status with that status
+            M->>EM: UPDATE Status
+        else still waiting for approval
+            Note over N: status is None, row picked again next run
+        end
+    end
+    N-->>P: (5) return None
+    P-->>T: return
+    T-->>T: (6) HTTP 200 Done
+</pre>
+
+<h2>2.3 Each return statement</h2>
+<table>
+  <tr><th>#</th><th>Where</th><th>What is returned</th><th>What it means</th></tr>
+  <tr><td><span class="num">1</span></td><td><code>DbActivityManager.get_new_activity</code></td><td>List of pyodbc <code>Row</code>s (<code>select *</code> from <code>tblEventMaster</code>)</td><td>Each row is the <code>dataset</code> passed everywhere after: <code>dataset.EventId</code>, <code>.ActivityName</code>, <code>.Payload</code>, <code>.Zone</code>, <code>.Cloud</code>, <code>.SnowItemId</code>, etc. Ordered Incident/Alert, then Request, then Change.</td></tr>
+  <tr><td><span class="num">2</span></td><td><code>SnowRequest.snow_get_ritm_status</code></td><td>Dict from SNOW with <code>stage</code>, <code>state</code>, <code>approval</code> (or empty)</td><td>The bypass runs <b>after</b> this call, so SNOW is still called. Empty result → warning + <code>continue</code>.</td></tr>
+  <tr><td><span class="num">3</span></td><td><code>AzServiceBusQueue.activity_data</code></td><td><code>None</code></td><td>Side effects only: inserts into <code>tblActivityAzServiceBusQueue</code> and <code>tblEventPendingActivity</code>. A DB error is logged and re-raised.</td></tr>
+  <tr><td><span class="num">4</span></td><td><code>AzPayloadDeserializer.deserialize</code></td><td><code>None</code></td><td>Router by <code>ActivityName</code>. An unknown name only logs <code>Unknown Azure Activity Name</code> – it does <b>not</b> raise.</td></tr>
+  <tr><td><span class="num">5</span></td><td><code>check_db_for_new_activity</code></td><td><code>None</code></td><td>Every exception inside the loop is caught and only logged (<code>Error Processing New Activity</code>); the HTTP call still returns 200.</td></tr>
+  <tr><td><span class="num">6</span></td><td><code>test_processor</code></td><td>HTTP 200 <code>Done</code></td><td>Always <code>Done</code> – check the logs and tables, not the response.</td></tr>
+</table>
+
+<h2>2.4 Payload → <code>tblActivityAzServiceBusQueue</code> columns</h2>
+<table>
+  <tr><th>Column</th><th>Source</th></tr>
+  <tr><td>EventId</td><td><code>dataset.EventId</code></td></tr>
+  <tr><td>SubscriptionId / SubscriptionName</td><td><code>Payload.data.subscription_id</code> / <code>subscription_name</code></td></tr>
+  <tr><td>ResourceGroupName</td><td><code>Payload.data.resource_group_name</code></td></tr>
+  <tr><td>NamespaceName</td><td><code>Payload.data.namespace_name</code></td></tr>
+  <tr><td>QueueName</td><td><code>Payload.data.queue_name</code> (NULL if empty)</td></tr>
+  <tr><td>Action</td><td><code>Payload.action</code> – written by Step 1 <code>snow_data</code> from the top-level <code>action</code></td></tr>
+  <tr><td>QueueProperties</td><td><code>json.dumps(Payload.data.queue_properties)</code> (NULL if empty)</td></tr>
+  <tr><td>Zone / Cloud</td><td><code>dataset.Zone</code> / <code>dataset.Cloud</code></td></tr>
+  <tr><td>Status</td><td><code>'In-Progress'</code></td></tr>
+  <tr><td>RetryAttemptedAt</td><td>now (UTC)</td></tr>
+  <tr><td>Justification</td><td><code>Payload.justification</code></td></tr>
+</table>
+
+<h2>2.5 Places where Step 2 can fail</h2>
+<table>
+  <tr><th>Condition</th><th>Result</th></tr>
+  <tr><td>Row's <code>SnowItemStatusCode</code>/<code>SnowItemStatus</code> not in the <code>get_new_activity</code> filter</td><td>Row never picked; no log about it. For testing you can set it manually (see 2.6).</td></tr>
+  <tr><td>Bypass not extended to <code>SERVICEBUSQUEUE</code></td><td>Real RITM status used → stays <code>Pending Approval</code> until approved.</td></tr>
+  <tr><td><code>case "SERVICEBUSQUEUE"</code> commented in <code>AzPayloadDeserializer</code></td><td>Only an error log, <b>but master is still set to <code>In-Progress</code></b> with no activity/pending rows → stuck.</td></tr>
+  <tr><td><code>activity_data</code> insert fails (column mismatch, NULL constraint…)</td><td>Exception logged, master not updated → retried every run.</td></tr>
+  <tr><td>Timer <code>request_processor</code> also running</td><td>The row may be processed by the timer before your manual call – the tables will already be filled.</td></tr>
+</table>
+
+<h2>2.6 Check that Step 2 worked</h2>
+<pre>
+DECLARE @id INT = &lt;EventId from Step 1&gt;;
+
+SELECT EventId, Status, SnowItemStatusCode, SnowItemStatus FROM tblEventMaster WHERE EventId = @id;   -- Status = In-Progress
+SELECT * FROM tblActivityAzServiceBusQueue WHERE EventId = @id;                                         -- 1 row, Status = In-Progress
+SELECT * FROM tblEventPendingActivity      WHERE EventId = @id;                                         -- 1 row
+
+-- TEST ONLY: force the Step 1 row into the get_new_activity filter
+-- UPDATE tblEventMaster SET SnowItemStatusCode = '2', SnowItemStatus = 'request_approved'
+-- WHERE EventId = @id AND Status = 'Pending Approval';
+</pre>
+
+<!-- ===================================================== STEP 3 ===================================================== -->
+<h1 id="step3">Step 3 – Pending → publish to Service Bus</h1>
+<p>Entry point: <code>test_processor</code> → <code>RequestProcessor.process_request()</code> → <code>PendingActivity.get_next_pending_activity()</code>.
+Result: one message per <code>In-Progress</code>/<code>Retry</code> activity row on the Service Bus topic <code>request_handler</code>, consumed by <code>abi-mc-az-requesthandler</code>.</p>
+
+<h2>3.1 What to comment / uncomment for Step 3</h2>
+<table>
+  <tr><th>Action</th><th>File</th><th>Details</th></tr>
+  <tr><td><b>Keep</b></td><td><code>function_app.py</code></td><td><code>test_processor</code> uncommented (from Step 2).</td></tr>
+  <tr><td><b>Comment out</b></td><td><code>RequestProcessor/RequestProcessor.py</code></td><td><code>await NewActivity().check_db_for_new_activity()</code></td></tr>
+  <tr><td><b>Uncomment</b></td><td><code>RequestProcessor/RequestProcessor.py</code></td><td><code>await PendingActivity().get_next_pending_activity()</code></td></tr>
+  <tr><td><b>Check / stub</b></td><td><code>RequestProcessor/ActivityType/PendingActivity.py</code></td><td>The <code>'Request'</code> case calls <code>snow_get_ritm_status</code> again, with no bypass. Empty result → skipped. Rejected/cancelled/closed RITM → <code>IncompleteActivity</code> <b>aborts</b> the activity. If your test RITM isn't really approved and open, add after the SNOW call:
+<pre>if dataset.ActivityName == 'SERVICEBUSQUEUE':  # TEST MODE: remove before deploy
+    snow_ritm = {'stage': 'request_approved', 'state': '2', 'approval': 'approved'}</pre></td></tr>
+  <tr><td><b>Check</b></td><td><code>RequestProcessor/Processor/AzProcessor.py</code></td><td><code>get_table_and_topic_names</code> must have <code>case "SERVICEBUSQUEUE"</code> (it does); otherwise <code>ValueError</code>.</td></tr>
+  <tr><td><b>Dry run first</b></td><td><code>RequestProcessor/Processor/Processor.py</code></td><td><code>publish_api</code> currently only logs <code>[FLOW-10] Payload before send</code>; the two <code>send_messages</code> lines are commented. Run like this first and check the logged payload.</td></tr>
+  <tr><td><b>Real send</b></td><td><code>RequestProcessor/Processor/Processor.py</code></td><td>Uncomment in <code>publish_api</code>:
+<pre>await sender.send_messages(message)
+logging.info(f"Successfully sent message to Service Bus. MessageId: {unique_key}, ActivityName: {payload.get('ActivityName', 'N/A')}")</pre></td></tr>
+  <tr><td><b>Verify</b></td><td>Portal / SQL</td><td>See 3.6.</td></tr>
+</table>
+
+<h3>Step 3 test flow</h3>
+<pre class="mermaid">
+flowchart TD
+    A[GET or POST /api/test_processor] --> B[process_request runs PendingActivity only]
+    B --> C[get_pending_activity joins tblEventPendingActivity and tblEventMaster]
+    C --> D{RetryAttemptedAt older than now?}
+    D -- No --> X1[Not picked this run]
+    D -- Yes --> E[snow_get_ritm_status SnowItemId]
+    E --> F{snow_ritm empty?}
+    F -- Yes --> X2[Warning logged - skipped]
+    F -- No --> G{rejected or cancelled or closed?}
+    G -- Yes --> X3[IncompleteActivity - Aborted, row to tblEventCompletedActivity]
+    G -- No --> H[AzProcessor.initialize]
+    H --> I[get_table_and_topic_names returns tblActivityAzServiceBusQueue]
+    I --> J[Processor.queue_processor]
+    J --> K[get_activity_info rows In-Progress or Retry]
+    K --> L{Any rows?}
+    L -- Yes --> M[Build payload and unique_key per row]
+    M --> N{row RetryAttemptedAt older than now?}
+    N -- Yes --> O[publish_api to topic request_handler]
+    N -- No --> P2[Not sent this run]
+    O --> Q[Update pending RetryAttemptedAt]
+    P2 --> Q
+    L -- No --> R[Count Success and Failed]
+    R --> S[(tblEventCompletedActivity)]
+</pre>
+
+<h2>3.2 Call chain (sequence diagram)</h2>
+<pre class="mermaid">
+sequenceDiagram
+    participant T as test_processor (function_app.py)
+    participant PE as PendingActivity.get_next_pending_activity
+    participant M as DbActivityManager
+    participant SR as SnowRequest.snow_get_ritm_status
+    participant AZ as AzProcessor.initialize
+    participant PR as Processor.queue_processor
+    participant SB as ServiceBus topic request_handler
+    participant DB as SQL tables
+
+    T->>PE: process_request() then get_next_pending_activity()
+    PE->>M: get_pending_activity()
+    M->>DB: SELECT tblEventPendingActivity JOIN tblEventMaster WHERE RetryAttemptedAt older than now
+    M-->>PE: (1) return datasets
+    loop each dataset with ActivityType Request
+        PE->>SR: snow_get_ritm_status(SnowItemId)
+        SR-->>PE: (2) return snow_ritm
+        PE->>PE: (3) determine_request_status returns status or None
+        alt status is not None
+            PE->>M: IncompleteActivity - Aborted and insert_activity_completed
+        else status is None
+            PE->>AZ: initialize_handler(dataset) when Cloud is Azure
+            AZ->>AZ: (4) get_table_and_topic_names returns TABLE_NAME
+            AZ->>PR: queue_processor(tblname, dataset)
+            PR->>M: get_activity_info(tblname, EventId)
+            M-->>PR: (5) return rows In-Progress or Retry
+            loop each row
+                PR->>PR: payload = row columns + ActivityName + TableName, pop RetryAttemptedAt
+                PR->>PR: (6) generate_unique_key returns sha256 of payload
+                opt row RetryAttemptedAt older than now
+                    PR->>SB: publish_api - send_messages (commented in dry run)
+                end
+            end
+            alt pending rows greater than 0
+                PR->>M: get_pending_next_retry_time
+                M-->>PR: (7) return earliest row
+                PR->>M: update_activity_pending_retry
+            else no rows left
+                PR->>M: get_activity_info_failed_count
+                M-->>PR: (8) return SuccessCount and FailedCount
+                PR->>M: insert_activity_completed Success or Failed
+            end
+        end
+    end
+    PE-->>T: return None, HTTP 200 Done
+</pre>
+
+<h2>3.3 Each return statement</h2>
+<table>
+  <tr><th>#</th><th>Where</th><th>What is returned</th><th>What it means</th></tr>
+  <tr><td><span class="num">1</span></td><td><code>DbActivityManager.get_pending_activity</code></td><td>Rows with <code>EventId, ActivityName, ActivityType, SnowId, SnowItemId, SnowItemStatusCode, SnowItemStatus, Cloud</code></td><td>Only pending rows whose <code>RetryAttemptedAt</code> is in the past. No <code>Payload</code> here – the payload comes from the activity table.</td></tr>
+  <tr><td><span class="num">2</span></td><td><code>snow_get_ritm_status</code></td><td>SNOW dict or empty</td><td>Empty → skipped. No bypass in this file unless you add one.</td></tr>
+  <tr><td><span class="num">3</span></td><td><code>determine_request_status</code></td><td><code>'Closed Incomplete'</code> / <code>'Cancelled'</code> / <code>'Closed Complete'</code> / <code>None</code></td><td>Non-None → activity is aborted. <code>None</code> → continue to publish.</td></tr>
+  <tr><td><span class="num">4</span></td><td><code>AzProcessor.get_table_and_topic_names</code></td><td><code>'tblActivityAzServiceBusQueue'</code></td><td>Unknown name → <code>ValueError</code> (caught in <code>get_next_pending_activity</code>, email sent, exception logged in <code>tblActivityInfo</code>).</td></tr>
+  <tr><td><span class="num">5</span></td><td><code>get_activity_info</code></td><td>Activity rows with Status <code>In-Progress</code> or <code>Retry</code></td><td>Each row becomes one Service Bus message.</td></tr>
+  <tr><td><span class="num">6</span></td><td><code>ServiceBusClientAbstract.generate_unique_key</code></td><td>SHA-256 hex of the payload</td><td>Used as <code>message_id</code>. Same row → same id on every run, so Service Bus duplicate detection (if enabled on the topic) drops repeats.</td></tr>
+  <tr><td><span class="num">7</span></td><td><code>get_pending_next_retry_time</code></td><td>Earliest <code>In-Progress</code>/<code>Retry</code> row</td><td>Its <code>RetryAttemptedAt</code> is copied to <code>tblEventPendingActivity</code>.</td></tr>
+  <tr><td><span class="num">8</span></td><td><code>get_activity_info_failed_count</code></td><td><code>TotalRecords, SuccessCount, FailedCount</code></td><td>0 failed → <code>Success</code>; mixed → <code>Failed / Implemented Partially</code>; 0 success → <code>Failed</code>.</td></tr>
+</table>
+
+<h2>3.4 Message sent to <code>request_handler</code></h2>
+<pre>
+{
+  "ActivityId": ...,                      &lt;- all columns of the tblActivityAzServiceBusQueue row
+  "EventId": ...,
+  "SubscriptionId": "...", "SubscriptionName": "...", "ResourceGroupName": "...",
+  "NamespaceName": "...", "QueueName": "...", "Action": "Create",
+  "QueueProperties": "{...}", "Zone": "GHQ", "Cloud": "Azure",
+  "Status": "In-Progress", "Justification": "...",
+  "ActivityName": "SERVICEBUSQUEUE",      &lt;- added by queue_processor
+  "TableName": "tblActivityAzServiceBusQueue"   &lt;- added by queue_processor
+}                                         (RetryAttemptedAt is removed)
+message_id = sha256 of the payload
+</pre>
+
+<h2>3.5 Places where Step 3 can fail / surprise you</h2>
+<table>
+  <tr><th>Condition</th><th>Result</th></tr>
+  <tr><td>Test RITM rejected / cancelled / closed in SNOW</td><td>Activity is <b>aborted</b>: activity row → <code>Aborted</code>, row in <code>tblEventCompletedActivity</code>. You need a new request to retest.</td></tr>
+  <tr><td>Dry run (send commented)</td><td>Nothing changes in the DB except <code>tblEventPendingActivity.RetryAttemptedAt</code>, so you can rerun as often as you like.</td></tr>
+  <tr><td>Real send, consumer not updating Status</td><td>Row stays <code>In-Progress</code> → the same message is published again on every run.</td></tr>
+  <tr><td><code>AzureWebJobsMyServiceBus</code> missing in <code>local.settings.json</code></td><td><code>KeyError</code> in <code>get_servicebus_client</code>.</td></tr>
+  <tr><td>Send fails (auth, topic missing…)</td><td><code>publish_api</code> catches and only logs the error – the run still looks successful.</td></tr>
+  <tr><td>Any other exception per dataset</td><td>Email notification + <code>tblActivityInfo.Exception</code> updated.</td></tr>
+</table>
+
+<h2>3.6 Check that Step 3 worked</h2>
+<ul>
+  <li><b>Dry run:</b> function logs contain <code>[FLOW-10] Publishing message</code> and <code>[FLOW-10] Payload before send</code> with the JSON above.</li>
+  <li><b>Real send:</b> logs contain <code>Successfully sent message to Service Bus</code>; in the portal, Service Bus namespace → topic <code>request_handler</code> → subscription → Service Bus Explorer → <i>Peek</i> shows the message (if the consumer app is stopped).</li>
+  <li><b>After the consumer processes it:</b></li>
+</ul>
+<pre>
+SELECT Status, Comments FROM tblActivityAzServiceBusQueue WHERE EventId = @id;   -- Success / Failed (set by request handler)
+SELECT * FROM tblEventPendingActivity    WHERE EventId = @id;                    -- RetryAttemptedAt moved forward
+SELECT * FROM tblEventCompletedActivity  WHERE EventId = @id;                    -- appears on the run after no rows are In-Progress / Retry
+</pre>
+
+<script>mermaid.initialize({ startOnLoad: true, theme: 'default', sequence: { showSequenceNumbers: false, wrap: true } });</script>
+</body>
+</html>
