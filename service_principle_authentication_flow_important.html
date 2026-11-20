@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Service Principal Role Assignment and Running the Queue Test Script</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --blue:#0b5cad; --bg:#f5f7fa; --card:#fff; --line:#d9e0e8; }
+  * { box-sizing:border-box; }
+  body { font-family:Segoe UI,Arial,sans-serif; background:var(--bg); color:#1d2733; margin:0; line-height:1.55; }
+  header { background:var(--blue); color:#fff; padding:28px 40px; }
+  header h1 { margin:0 0 6px; font-size:26px; }
+  header p { margin:0; opacity:.9; }
+  main { max-width:1200px; margin:0 auto; padding:24px 24px 60px; }
+  nav, section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:20px 26px; margin-bottom:20px; }
+  nav ol { margin:6px 0 0; padding-left:20px; }
+  h2 { color:var(--blue); margin-top:0; border-bottom:2px solid var(--line); padding-bottom:6px; }
+  code, pre { font-family:Consolas,monospace; font-size:13px; }
+  code { background:#eef2f6; padding:1px 5px; border-radius:3px; }
+  pre { background:#1e2530; color:#e6edf3; padding:14px 16px; border-radius:6px; overflow-x:auto; line-height:1.45; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:#eaf0f7; }
+  .note, .warn, .ok, .bad { padding:10px 14px; border-radius:6px; margin:12px 0; border-left:4px solid; }
+  .note { background:#eaf3fc; border-color:var(--blue); }
+  .warn { background:#fff4e0; border-color:#e59400; }
+  .ok { background:#e6f5ea; border-color:#2e9b4f; }
+  .bad { background:#fdecec; border-color:#d13b3b; }
+  .flow { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0; }
+  .box { background:#eaf0f7; border:1px solid var(--blue); border-radius:6px; padding:8px 12px; font-size:14px; }
+  .arrow { color:var(--blue); font-weight:bold; }
+  ol.steps > li { margin-bottom:8px; }
+  pre.mermaid { background:#fff; color:#1d2733; border:1px solid var(--line); border-radius:6px; padding:10px; font-family:Segoe UI,Arial,sans-serif; overflow:visible; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Service Principal, Role Assignment and Running the Queue Test</h1>
+  <p>How a service principal gets permission on a resource group, and how the test script uses it to create, update and delete a Service Bus queue.</p>
+</header>
+<main>
+
+<nav>
+  <strong>Contents</strong>
+  <ol>
+    <li><a href="#idea">The big picture</a></li>
+    <li><a href="#terms">Terms</a></li>
+    <li><a href="#setup">Portal setup, step by step (including role assignment)</a></li>
+    <li><a href="#roles">Why Contributor (and not the Service Bus roles)</a></li>
+    <li><a href="#flow">What happens when the script runs</a></li>
+    <li><a href="#script">The test script</a></li>
+    <li><a href="#run">How to run the script</a></li>
+    <li><a href="#creds">ClientSecretCredential vs. DefaultAzureCredential</a></li>
+    <li><a href="#authflow">How get_servicebus_client authenticates (full flow)</a></li>
+    <li><a href="#real">Real app vs. this test</a></li>
+    <li><a href="#trouble">Role and credential problems</a></li>
+    <li><a href="#cleanup">Cleanup and security</a></li>
+  </ol>
+</nav>
+
+<section id="idea">
+  <h2>1. The big picture</h2>
+  <ol class="steps">
+    <li>We create a <strong>resource group</strong> and a <strong>Service Bus namespace</strong> inside it (the queue will live in the namespace).</li>
+    <li>We create an <strong>app registration</strong>. This creates an identity (a service principal) with a client ID and a client secret.</li>
+    <li>On the <strong>resource group</strong> we give that service principal the <strong>Contributor</strong> role (role assignment).</li>
+    <li>The test script logs in as that service principal (tenant ID + client ID + secret) and creates, updates and deletes a queue in the namespace.</li>
+  </ol>
+  <div class="note">Yes: the service principal is created in App registrations, it is given Contributor on the resource group that holds the Service Bus namespace,
+  and its credentials are used in the script to manage the queue.</div>
+  <table>
+    <tr><th>Concept</th><th>Question</th><th>Where you set it up</th></tr>
+    <tr><td><strong>Authentication</strong></td><td>Who are you?</td><td>App registration &rarr; service principal + client secret</td></tr>
+    <tr><td><strong>Authorization</strong></td><td>What may you do?</td><td>Resource group &rarr; Access control (IAM) &rarr; role assignment</td></tr>
+  </table>
+  <p>A newly created service principal can sign in but can do <strong>nothing</strong> until it is given a role.</p>
+</section>
+
+<section id="terms">
+  <h2>2. Terms</h2>
+  <table>
+    <tr><th>Term</th><th>Meaning</th></tr>
+    <tr><td>Tenant ID</td><td>Your Entra ID directory (the "company" the identity lives in)</td></tr>
+    <tr><td>App registration</td><td>The definition of an app/identity in Entra ID</td></tr>
+    <tr><td>Client (Application) ID</td><td>The public "username" of the app</td></tr>
+    <tr><td>Service principal</td><td>The app's identity inside your tenant; this is what receives permissions</td></tr>
+    <tr><td>Client secret</td><td>The "password" of the app. The <strong>Value</strong> is shown only once (not the "Secret ID")</td></tr>
+    <tr><td>Role assignment</td><td>Three parts: <strong>who</strong> (the app) + <strong>which role</strong> (Contributor) + <strong>where</strong> (the resource group)</td></tr>
+    <tr><td>Scope</td><td>The "where" of a role assignment. Permissions flow downward: group &rarr; namespace &rarr; queues</td></tr>
+    <tr><td>Management plane</td><td>Azure Resource Manager (<code>management.azure.com</code>): create / change / delete resources, including queues</td></tr>
+    <tr><td>Data plane</td><td>Send / receive messages. Not used for creating queues</td></tr>
+  </table>
+</section>
+
+<section id="setup">
+  <h2>3. Portal setup, step by step</h2>
+  <p>Do this in the <strong>personal</strong> Azure account (use an InPrivate window so the org session is not reused).</p>
+  <ol class="steps">
+    <li><strong>Resource group</strong> &ndash; create one, e.g. <code>prem-servicebus</code>. Everything goes here, so cleanup is a single delete.</li>
+    <li><strong>Service Bus namespace</strong> &ndash; create it inside that group, e.g. <code>mit-servicebus</code>. Basic SKU is enough for queues.</li>
+    <li><strong>App registration</strong> &ndash; Microsoft Entra ID &rarr; App registrations &rarr; New registration. Name it (e.g. <code>sbq-test-sp</code>), single tenant, no redirect URI &rarr; Register.
+      <br>On the Overview page note the <strong>Application (client) ID</strong> and the <strong>Directory (tenant) ID</strong>.</li>
+    <li><strong>Client secret</strong> &ndash; the app &rarr; Certificates &amp; secrets &rarr; New client secret.
+      Copy the <strong>Value</strong> immediately (it is hidden afterwards). Do not copy the "Secret ID".</li>
+    <li><strong>Role assignment</strong> &ndash; open the <strong>resource group</strong> (not the app) &rarr; Access control (IAM) &rarr; Add &rarr; Add role assignment:
+      <ul>
+        <li><strong>Role tab:</strong> Contributor is <em>not</em> under "Job function roles". Open the <strong>Privileged administrator roles</strong> tab (or search "Contributor"), select <strong>Contributor</strong>, click Next.</li>
+        <li><strong>Members tab:</strong> choose <em>User, group, or service principal</em> &rarr; Select members &rarr; search for your <strong>app name</strong> (e.g. <code>sbq-test-sp</code>) &rarr; Select.</li>
+        <li><strong>Review + assign</strong> (click it twice).</li>
+      </ul>
+      Verify: IAM &rarr; Role assignments &rarr; the app is listed with <strong>Contributor</strong>. Wait 1&ndash;2 minutes for it to take effect.</li>
+    <li><strong>Collect the four values</strong> for the script:
+      <table>
+        <tr><th>Value</th><th>Where to find it</th></tr>
+        <tr><td>Tenant ID</td><td>App registration &rarr; Overview (Directory ID)</td></tr>
+        <tr><td>Client ID</td><td>App registration &rarr; Overview (Application ID)</td></tr>
+        <tr><td>Client secret</td><td>The <strong>Value</strong> copied in step 4</td></tr>
+        <tr><td>Subscription ID</td><td>Subscriptions &rarr; your subscription &rarr; Overview</td></tr>
+      </table>
+    </li>
+  </ol>
+  <div class="ok">No Key Vault and no <code>az login</code> are needed. The script receives the credentials directly.</div>
+</section>
+
+<section id="roles">
+  <h2>4. Why Contributor (and not the Service Bus roles)</h2>
+  <table>
+    <tr><th>Role</th><th>Plane</th><th>Can it create / update / delete a queue?</th></tr>
+    <tr><td>Contributor (on the resource group)</td><td>Management</td><td><strong>Yes</strong></td></tr>
+    <tr><td>Azure Service Bus Data Owner</td><td>Data</td><td>No &ndash; gives 403 on the management call</td></tr>
+    <tr><td>Azure Service Bus Data Sender</td><td>Data</td><td>No (send messages only)</td></tr>
+    <tr><td>Azure Service Bus Data Receiver</td><td>Data</td><td>No (receive messages only)</td></tr>
+  </table>
+  <p>The handler uses <code>ServiceBusManagementClient</code> (Azure Resource Manager), so it needs a management-plane role.
+  The Data roles are only for sending and receiving messages. Contributor on the group is inherited by the namespace and every queue inside it.</p>
+</section>
+
+<section id="flow">
+  <h2>5. What happens when the script runs</h2>
+  <div class="flow">
+    <div class="box">Script<br><small>tenant + client ID + secret</small></div><span class="arrow">&rarr;</span>
+    <div class="box">Entra ID<br><small>login.microsoftonline.com</small></div><span class="arrow">&rarr;</span>
+    <div class="box">Access token</div>
+  </div>
+  <div class="flow">
+    <div class="box">Script + token</div><span class="arrow">&rarr;</span>
+    <div class="box">management.azure.com</div><span class="arrow">&rarr;</span>
+    <div class="box">Role check<br><small>Contributor on the group? yes</small></div><span class="arrow">&rarr;</span>
+    <div class="box">Queue created / updated / deleted</div>
+  </div>
+  <ol class="steps">
+    <li><code>ClientSecretCredential</code> sends tenant ID, client ID and secret to Entra ID and gets an access token (a 200 on <code>/oauth2/v2.0/token</code> in the log).</li>
+    <li>The handler calls <code>queues.get</code> to see whether the queue exists (404 means it does not).</li>
+    <li>For Create / Update it calls <code>queues.create_or_update</code> (one PUT call for both). For Delete it calls <code>queues.delete</code>.</li>
+    <li>Azure checks the token and the role assignment, then performs the change. Without the role you get 403.</li>
+  </ol>
+</section>
+
+<section id="script">
+  <h2>6. The test script</h2>
+  <p>File: <code>test_servicebus_queue_personal.py</code> in the project root. Secrets are shown as placeholders here.
+  The file is excluded from git on your machine via <code>.git/info/exclude</code>.</p>
+<pre>import json, logging, os, sys
+from azure.identity import ClientSecretCredential
+from azure.mgmt.servicebus import ServiceBusManagementClient
+
+TENANT_ID = "&lt;tenant-id&gt;"
+CLIENT_ID = "&lt;client-id&gt;"
+CLIENT_SECRET = "&lt;client-secret-value&gt;"
+SUBSCRIPTION_ID = "&lt;personal-subscription-id&gt;"
+RESOURCE_GROUP = "&lt;resource-group&gt;"
+NAMESPACE = "&lt;namespace-name&gt;"
+QUEUE_NAME = "test-queue"
+
+# The handler only changes Azure when its environment check matches
+os.environ["Environment"] = "local"
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+from Catalog.Azure.ServiceBusQueueMgmt.servicebus_queue_mgmt import AzServiceBusQueueMgmt
+
+subscription_id, resource_group, namespace, queue_name = SUBSCRIPTION_ID, RESOURCE_GROUP, NAMESPACE, QUEUE_NAME
+if len(sys.argv) &gt;= 4:
+    subscription_id, resource_group, namespace = sys.argv[1:4]
+    queue_name = sys.argv[4] if len(sys.argv) &gt; 4 else QUEUE_NAME
+if any(v.startswith("&lt;") for v in (subscription_id, resource_group, namespace)):
+    sys.exit("Fill in SUBSCRIPTION_ID, RESOURCE_GROUP and NAMESPACE at the top of the script.")
+
+credential = ClientSecretCredential(tenant_id=TENANT_ID, client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
+client = ServiceBusManagementClient(credential, subscription_id)
+
+
+def run(action, properties=None):
+    payload = {
+        "ActivityId": "TEST-ACTIVITY", "EventId": "TEST-EVENT",
+        "SubscriptionId": subscription_id, "ResourceGroupName": resource_group,
+        "NamespaceName": namespace, "QueueName": queue_name,
+        "Action": action, "Zone": "GHQ",
+        "QueueProperties": json.dumps(properties) if properties else None,
+    }
+    handler = AzServiceBusQueueMgmt(payload)
+    handler._client = client          # skips the Key Vault based credential lookup
+    result = handler.manage_queue()
+    print(f"\n[{action}] result: {result}")
+    return result
+
+
+def show():
+    q = client.queues.get(resource_group, namespace, queue_name)
+    print(f"ttl={q.default_message_time_to_live} "
+          f"max_size_mb={q.max_size_in_megabytes} max_delivery_count={q.max_delivery_count}")
+
+
+run("Create", {"default_message_time_to_live": "P14D", "lock_duration": "PT5M"})
+show()
+
+run("Update", {"lock_duration": "PT1M"})
+show()   # lock_duration changes; ttl and max size stay as created
+
+run("Delete")
+try:
+    client.queues.get(resource_group, namespace, queue_name)
+    print("FAIL: queue still exists")
+except Exception as e:
+    print(f"  confirmed deleted ({type(e).__name__})")</pre>
+  <h3>What the parts do</h3>
+  <ul>
+    <li><strong>The six constants</strong> are the values from the portal setup (section 3).</li>
+    <li><code>ClientSecretCredential</code> is the service principal login (tenant + client ID + secret).</li>
+    <li><code>ServiceBusManagementClient</code> is the client that talks to Azure Resource Manager using that login.</li>
+    <li><code>handler._client = client</code> gives the real handler this ready-made client, so it does not look up the org credentials in Key Vault.
+      Create / update / delete logic is the real handler code.</li>
+    <li><code>run()</code> builds a payload like the real request and calls <code>manage_queue()</code>; <code>show()</code> prints the queue's current settings.</li>
+  </ul>
+</section>
+
+<section id="run">
+  <h2>7. How to run the script</h2>
+  <ol class="steps">
+    <li>Complete the portal setup (section 3) and confirm Contributor is listed under the resource group's Role assignments. Wait 1&ndash;2 minutes.</li>
+    <li>Open the script and fill in the six constants (tenant ID, client ID, client secret Value, subscription ID, resource group, namespace).</li>
+    <li>Make sure the Create, Update and Delete lines are all uncommented (while debugging some may be commented out).</li>
+    <li>Open a terminal in the project folder, activate the venv and run:
+<pre>cd C:\Users\C901925\Desktop\abi-mc-az-requesthandler
+.\.venv\Scripts\Activate.ps1
+python .\test_servicebus_queue_personal.py</pre>
+      Or without activating: <code>.\.venv\Scripts\python.exe test_servicebus_queue_personal.py</code>.
+      Optionally pass values instead of editing the file: <code>python test_servicebus_queue_personal.py &lt;subscription_id&gt; &lt;resource_group&gt; &lt;namespace&gt; [queue_name]</code>.</li>
+    <li>Watch the console, and refresh Namespace &rarr; Queues in the portal after each step.</li>
+  </ol>
+  <h3>Expected result</h3>
+  <ol>
+    <li><strong>Create</strong>: <code>Operation: Created</code>; queue appears in the portal with TTL 14 days and lock duration 5 minutes.</li>
+    <li><strong>Update</strong>: <code>Operation: Updated</code>; lock duration becomes 1 minute, TTL and max size unchanged.</li>
+    <li><strong>Delete</strong>: queue disappears; the last line prints <code>confirmed deleted (ResourceNotFoundError)</code>.</li>
+  </ol>
+  <div class="warn">If the result is just <code>True</code> and nothing changes in Azure, the handler's environment check did not match
+  <code>os.environ["Environment"]</code> and it only logged "[NON-PROD] Would ...". Make the two values match.</div>
+</section>
+
+<section id="creds">
+  <h2>8. ClientSecretCredential vs. DefaultAzureCredential</h2>
+  <p><strong>ClientSecretCredential</strong> logs in as one specific identity that you name. You give it the tenant ID, client ID and secret,
+  and it asks Entra ID for a token as that service principal. It always does exactly that, so it is predictable.</p>
+  <p><strong>DefaultAzureCredential</strong> is not a login method itself. It tries a list of methods in order and uses the first one that works:</p>
+  <ol>
+    <li>Environment variables (<code>AZURE_CLIENT_ID</code>, <code>AZURE_TENANT_ID</code>, <code>AZURE_CLIENT_SECRET</code>)</li>
+    <li>Workload identity</li>
+    <li>Managed identity (when running in Azure)</li>
+    <li>Visual Studio Code or Visual Studio sign-in</li>
+    <li>Azure CLI (<code>az login</code>)</li>
+    <li>Azure PowerShell / azd</li>
+  </ol>
+  <p>The same code then works on a laptop (using your <code>az login</code>) and in Azure (using a managed identity), with no secret in the code.</p>
+  <table>
+    <tr><th></th><th>ClientSecretCredential</th><th>DefaultAzureCredential</th></tr>
+    <tr><td>Identity used</td><td>Always the service principal you pass in</td><td>Whichever method succeeds first</td></tr>
+    <tr><td>Needs a secret in code or config</td><td>Yes</td><td>No (uses the environment, CLI or managed identity)</td></tr>
+    <tr><td>Predictable</td><td>Yes</td><td>Less so, it can pick up an unexpected identity</td></tr>
+    <tr><td>Best for</td><td>Fixed service principal, as in the test script</td><td>Code that runs in several places</td></tr>
+  </table>
+  <h3>In this repo</h3>
+  <ul>
+    <li><code>DefaultAzureCredential</code> reads the Key Vault secret from <code>KEYVAULT_URI</code>. The function app uses its own managed identity (or your <code>az login</code> locally) for that.</li>
+    <li>That secret holds the service principal's <code>client_id</code>, <code>secret</code> and <code>tenant</code>.</li>
+    <li><code>ClientSecretCredential</code> then uses those values to log in as the org service principal and manage the Azure resources.</li>
+  </ul>
+  <p>So the first credential is used to get to the secret, and the second does the actual work.</p>
+  <h3>In the test script</h3>
+  <ul>
+    <li>It uses <code>ClientSecretCredential</code> directly with the personal service principal.</li>
+    <li>That skips the Key Vault step, so no <code>az login</code> is needed (it was blocked on the laptop).</li>
+    <li>It also guarantees the calls run as the service principal that has Contributor, not as some other identity.</li>
+  </ul>
+</section>
+
+<section id="authflow">
+  <h2>9. How <code>get_servicebus_client</code> authenticates (full flow)</h2>
+  <p><code>ServicebusClient().get_servicebus_client(self.subscription_id, self.cloud)</code> works in two phases, and two different identities are involved:</p>
+  <ul>
+    <li><strong>Phase A (when the client is built):</strong> the Function App's own identity reads the org service principal's credentials from Key Vault.</li>
+    <li><strong>Phase B (on the first queue call):</strong> that service principal gets a token and calls Azure Resource Manager.</li>
+  </ul>
+
+  <h3>Flow diagram</h3>
+  <pre class="mermaid">
+sequenceDiagram
+    participant H as Queue<br/>Handler
+    participant SC as Servicebus<br/>Client
+    participant CA as ClientSecret<br/>Auth
+    participant ST as Spn<br/>Token
+    participant AK as Akv<br/>Secrets
+    participant MI as DefaultAzure<br/>Credential
+    participant ENTRA as Entra ID
+    participant KV as Key Vault
+    participant ARM as ARM
+
+    Note over H,KV: Phase A - build the client (self.client first used)
+    H->>SC: (1) get_servicebus_client(sub_id, cloud)
+    SC->>SC: (2) read SPN_SECRET_PUBLIC = secret name
+    SC->>CA: (3) client_credential(secret_name)
+    CA->>ST: (4) get_spn_token(secret_name) [lru_cache]
+    ST->>AK: (5) get_tokens() with KEYVAULT_URI
+    AK->>MI: (6) get_token(vault scope)
+    MI->>ENTRA: (7) managed identity / az login
+    ENTRA-->>MI: (8) return Key Vault access token
+    MI-->>AK: (9) return token to SecretClient
+    AK->>KV: (10) GET /secrets/secret_name (Bearer)
+    KV-->>AK: (11) return KeyVaultSecret (.value JSON)
+    AK-->>ST: (12) return retrieved_secret
+    ST-->>CA: (13) return client_id, secret, tenant
+    CA-->>SC: (14) return ClientSecretCredential
+    SC-->>H: (15) return ServiceBusManagementClient
+
+    Note over H,ARM: Phase B - first real call, e.g. client.queues.get(...)
+    H->>ENTRA: (16) POST /tenant/oauth2/v2.0/token
+    ENTRA-->>H: (17) return ARM access token (org SPN)
+    H->>ARM: (18) GET .../queues/queue (Bearer)
+    ARM->>ARM: (19) validate token and RBAC role
+    ARM-->>H: (20) return 200 SBQueue, 404 or 403
+  </pre>
+  <div class="note">Solid arrows are calls; dashed arrows starting with <strong>return</strong> are what each call gives back. Numbers (1)&ndash;(20) follow the order of the flow. The diagram fits the page width. It is drawn by the Mermaid library, loaded from the internet; offline you'll see the diagram text instead.</div>
+
+  <h3>Each step: what is sent and what comes back</h3>
+  <table>
+    <tr><th>#</th><th>Code</th><th>Sent</th><th>Returned</th></tr>
+    <tr><td>1</td><td><code>self.client</code> property in <code>servicebus_queue_mgmt.py</code></td><td>Nothing. It only builds the client on first use and stores it in <code>self._client</code></td><td>The client (built in steps 2&ndash;8)</td></tr>
+    <tr><td>2</td><td><code>get_servicebus_client</code> in <code>shared_code/servicebusmgmt_client.py</code></td><td><code>subscriptionid</code>, <code>azenvironment</code> (<code>AzurePublicCloud</code> or <code>AzureChinaCloud</code>, from <code>Zone</code>)</td><td>Reads app setting <code>SPN_SECRET_PUBLIC</code> (or <code>SPN_SECRET_CHINA</code>), which is the <strong>name</strong> of a Key Vault secret</td></tr>
+    <tr><td>3</td><td><code>ClientSecretAuth.client_credential</code> in <code>shared_code/client_secret_auth.py</code></td><td><code>kv_secret_name</code></td><td><code>ClientSecretCredential</code> object</td></tr>
+    <tr><td>4</td><td><code>SpnToken.get_spn_token</code> in <code>shared_code/spn_token.py</code></td><td><code>secret_name</code>, plus app setting <code>KEYVAULT_URI</code></td><td>A dict: <code>{"client_id": ..., "secret": ..., "tenant": ...}</code>. Thanks to <code>@lru_cache</code>, Key Vault is only read <strong>once per worker process</strong> for each secret name</td></tr>
+    <tr><td>5</td><td><code>AkvSecrets.get_tokens</code> in <code>shared_code/akv_secrets.py</code> builds <code>DefaultAzureCredential()</code></td><td>&mdash;</td><td>A credential object</td></tr>
+    <tr><td>6</td><td><code>DefaultAzureCredential</code> gets a token (<strong>network</strong>)</td><td>Scope <code>https://vault.azure.net/.default</code>. In Azure it uses the Function App's <strong>managed identity</strong>; locally it uses <code>az login</code> or VS Code</td><td>Key Vault access token</td></tr>
+    <tr><td>7</td><td><code>SecretClient.get_secret(name)</code> (<strong>network</strong>)</td><td><code>GET https://&lt;vault&gt;.vault.azure.net/secrets/&lt;name&gt;</code> with <code>Authorization: Bearer &lt;token&gt;</code></td><td><code>KeyVaultSecret</code>. Its <code>.value</code> is a JSON string that step 4 parses with <code>json.loads</code></td></tr>
+    <tr><td>8</td><td><code>ClientSecretCredential(client_id, client_secret, tenant_id)</code></td><td>&mdash; (no network)</td><td>A credential that stores the org service principal's details</td></tr>
+    <tr><td>9</td><td><code>ServiceBusManagementClient(credentials, subscriptionid)</code></td><td>&mdash; (no network)</td><td>The client. For China it also sets <code>base_url</code> and <code>credential_scopes</code> to the China management endpoint</td></tr>
+    <tr><td>10</td><td>First operation, e.g. <code>client.queues.get(rg, ns, queue)</code>. The SDK asks the credential for a token (<strong>network</strong>)</td><td><code>POST https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token</code> with <code>grant_type=client_credentials</code>, <code>client_id</code>, <code>client_secret</code>, <code>scope=https://management.azure.com/.default</code></td><td>Access token (a JWT, valid about an hour). The SDK caches it and refreshes it automatically</td></tr>
+    <tr><td>11</td><td>The actual call (<strong>network</strong>)</td><td><code>GET https://management.azure.com/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ServiceBus/namespaces/{ns}/queues/{q}?api-version=2021-11-01</code> with <code>Authorization: Bearer &lt;token&gt;</code></td><td>Azure checks the token, then checks the service principal's role on that scope. Result: <code>200</code> with the queue, <code>404</code>, or <code>403 AuthorizationFailed</code></td></tr>
+  </table>
+
+  <h3>The two identities</h3>
+  <table>
+    <tr><th>Identity</th><th>Used for</th><th>Permission it needs</th></tr>
+    <tr><td>Function App managed identity (<code>DefaultAzureCredential</code>)</td><td>Reading the secret from Key Vault</td><td>Key Vault <code>get</code> on secrets (Key Vault Secrets User or an access policy)</td></tr>
+    <tr><td>Org service principal (<code>ClientSecretCredential</code>)</td><td>Creating, updating and deleting the queue</td><td>A write role, such as Contributor, on the subscription, resource group or namespace</td></tr>
+  </table>
+
+  <h3>Where your test script fits</h3>
+  <p>It sets <code>handler._client = client</code> directly, so the <code>self.client</code> property never calls <code>get_servicebus_client</code>.
+  Steps 2&ndash;9 are skipped: no Key Vault and no <code>DefaultAzureCredential</code>. Steps 10&ndash;11 run the same way, using your personal service principal.</p>
+
+  <h3>Two things to note</h3>
+  <ul>
+    <li><strong><code>truststore</code> at the top of the handler:</strong> <code>servicebus_queue_mgmt.py</code> now starts with <code>import truststore; truststore.inject_into_ssl()</code>.
+      That is only for the proxy on your laptop. Move it into the test script before merging, because <code>truststore</code> probably isn't in <code>requirements.txt</code>, so the deployed function would fail to import it.</li>
+    <li><strong>China cloud login (worth confirming):</strong> for China, <code>ClientSecretCredential</code> is created without an <code>authority</code>, so it signs in through the global <code>login.microsoftonline.com</code>.
+      A China tenant normally needs <code>login.chinacloudapi.cn</code>. This is the existing shared pattern, not something changed here, so it's worth checking whether China requests work today.</li>
+  </ul>
+</section>
+
+<section id="real">
+  <h2>10. Real app vs. this test</h2>
+  <table>
+    <tr><th></th><th>Real app</th><th>Personal test</th></tr>
+    <tr><td>Trigger</td><td>Service Bus message &rarr; orchestrator &rarr; activity</td><td>Script calls the handler class directly</td></tr>
+    <tr><td>Service principal</td><td>Org SPN read from Key Vault (<code>SPN_SECRET_PUBLIC</code> &rarr; <code>KEYVAULT_URI</code>), needs write access to Service Bus queues</td><td>Personal SPN typed into the script, Contributor on the personal resource group</td></tr>
+    <tr><td>Subscription</td><td>From the payload</td><td>Constant in the script</td></tr>
+  </table>
+  <p>The handler logic is the same; only how the credential is obtained and how the request arrives differ.</p>
+</section>
+
+<section id="trouble">
+  <h2>11. Role and credential problems</h2>
+  <table>
+    <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+    <tr><td><em>Add role assignment</em> button greyed out</td><td>You are not Owner / User Access Administrator on that scope, or signed in to the wrong account/tenant</td><td>Use the personal account's own subscription</td></tr>
+    <tr><td>Contributor not in the role list</td><td>Wrong tab</td><td>Use <em>Privileged administrator roles</em> or search "Contributor"</td></tr>
+    <tr><td><code>AuthorizationFailed</code> / 403</td><td>Role missing, assigned on a different resource group, or not yet propagated</td><td>Check IAM &rarr; Role assignments on the correct group; wait 1&ndash;2 minutes</td></tr>
+    <tr><td><code>invalid_client</code> / <code>ClientAuthenticationError</code></td><td>Secret ID copied instead of Value, wrong client ID, or expired secret</td><td>Create a new secret and copy the Value</td></tr>
+    <tr><td>App not found when selecting members</td><td>Searching by client ID or wrong tenant</td><td>Search by the app's display name</td></tr>
+  </table>
+</section>
+
+<section id="cleanup">
+  <h2>12. Cleanup and security</h2>
+  <div class="bad"><strong>The client secret was pasted into a chat and hard-coded in the script.</strong> Treat it as exposed.</div>
+  <ol class="steps">
+    <li>Delete the resource group (removes the namespace, queues and the role assignment): Portal &rarr; Resource groups &rarr; Delete.</li>
+    <li>Delete the client secret or the whole app registration: App registrations &rarr; your app &rarr; Certificates &amp; secrets (or Delete).</li>
+    <li>Delete the script or blank out the constants. Never commit it.</li>
+    <li>Before merging the handler, switch its environment check back to <code>"production"</code>.</li>
+  </ol>
+</section>
+
+</main>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    sequence: {
+      useMaxWidth: true, wrap: true,
+      width: 120, height: 55, actorMargin: 22, boxMargin: 8, noteMargin: 10, messageMargin: 34,
+      actorFontSize: 15, messageFontSize: 15, noteFontSize: 15
+    }
+  });
+</script>
+</body>
+</html>
